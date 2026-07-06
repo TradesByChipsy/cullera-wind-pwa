@@ -46,6 +46,13 @@
   }
   button.refresh:active{transform:translateY(1px)}
   .updated{font-family:'DM Mono',monospace;font-size:11px;color:#bcd9e6}
+  .push-btn{background:var(--sea-500);box-shadow:0 8px 20px -8px var(--sea-700)}
+  .push-panel{margin-top:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px}
+  .push-panel p{font-size:12.5px;color:#dcecf3;line-height:1.5;margin-bottom:8px}
+  .push-panel textarea{
+    width:100%;font-family:'DM Mono',monospace;font-size:10px;color:#0c2c44;
+    border:none;border-radius:8px;padding:8px;margin-bottom:8px;background:#e8f3f1;resize:vertical
+  }
 
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{
@@ -109,7 +116,13 @@
     <h1>Wind &amp; <em>Welle</em></h1>
     <div class="controls">
       <button class="refresh" id="refresh">&#8635; Aktualisieren</button>
+      <button class="refresh push-btn" id="pushBtn" hidden>&#128276; Push aktivieren</button>
       <span class="updated" id="updated"></span>
+    </div>
+    <div class="push-panel" id="pushPanel" hidden>
+      <p id="pushInfo"></p>
+      <textarea id="subJson" readonly rows="4"></textarea>
+      <button class="refresh" id="copySub">Kopieren</button>
     </div>
   </header>
 
@@ -417,9 +430,74 @@ document.addEventListener("visibilitychange", () => {
 });
 load();
 
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js");
+// ---------- Web Push ----------
+const VAPID_PUBLIC_KEY = "BHNQBYj_4AqFJf7C6xafkpbFYVIszk9x0ioQsQE5jPoTNFNtaacXCtHwCD0_W43EbKxss2dqMYNl2tu5PWixD8o";
+
+function urlB64ToUint8(s){
+  const pad = "=".repeat((4 - s.length % 4) % 4);
+  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
 }
+
+const pushBtn = document.getElementById("pushBtn");
+const pushPanel = document.getElementById("pushPanel");
+const pushInfo = document.getElementById("pushInfo");
+const subJson = document.getElementById("subJson");
+
+function showSubscription(sub, fresh){
+  subJson.value = JSON.stringify(sub);
+  pushInfo.textContent = fresh
+    ? "Push ist aktiv! Diesen Code einmalig kopieren und an Claude schicken, damit die Berichte hier ankommen:"
+    : "Push ist bereits aktiv. Falls der Code nochmal gebraucht wird:";
+  pushPanel.hidden = false;
+  pushBtn.textContent = "\u{1F514} Push aktiv";
+  pushBtn.disabled = true;
+}
+
+async function initPush(){
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  const reg = await navigator.serviceWorker.register("sw.js");
+  pushBtn.hidden = false;
+  const existing = await reg.pushManager.getSubscription();
+  if (existing && Notification.permission === "granted"){
+    showSubscription(existing, false);
+    pushPanel.hidden = true;           // nicht aufdrängen, Button zeigt Status
+    pushBtn.textContent = "\u{1F514} Push aktiv";
+    pushBtn.disabled = false;          // Tippen zeigt den Code nochmal
+    pushBtn.onclick = () => { pushPanel.hidden = !pushPanel.hidden; };
+    return;
+  }
+  pushBtn.onclick = async () => {
+    try{
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted"){
+        pushInfo.textContent = "Benachrichtigungen wurden nicht erlaubt. In den Android-Einstellungen für diese App freigeben und erneut versuchen.";
+        subJson.value = ""; pushPanel.hidden = false;
+        return;
+      }
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY),
+      });
+      showSubscription(sub, true);
+    }catch(err){
+      pushInfo.textContent = "Aktivierung fehlgeschlagen: " + err.message;
+      subJson.value = ""; pushPanel.hidden = false;
+    }
+  };
+}
+
+document.getElementById("copySub").addEventListener("click", async () => {
+  try{
+    await navigator.clipboard.writeText(subJson.value);
+    document.getElementById("copySub").textContent = "Kopiert ✓";
+  }catch{
+    subJson.select(); document.execCommand("copy");
+    document.getElementById("copySub").textContent = "Kopiert ✓";
+  }
+});
+
+initPush();
 </script>
 </body>
 </html>
