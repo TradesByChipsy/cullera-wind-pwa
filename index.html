@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#06243a">
+<title>Cullera Wind &amp; Welle</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --sea-900:#06243a; --sea-700:#11507c; --sea-500:#1f7fb0;
+    --gold:#f2a900; --coral:#ff6b4a; --coral-deep:#e34a2b;
+    --ink:#06243a; --mute:#5b7689;
+    --line:rgba(6,36,58,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:'Hanken Grotesk',sans-serif;color:var(--ink);
+    background:
+      radial-gradient(120% 80% at 80% -10%, #2a9fd0 0%, transparent 55%),
+      radial-gradient(100% 70% at -10% 0%, #0b3a5c 0%, transparent 50%),
+      linear-gradient(180deg,#06243a 0%, #0b3a5c 30%, #0e4a72 100%);
+    background-attachment:fixed;
+    min-height:100vh;
+    padding:calc(14px + env(safe-area-inset-top)) 14px calc(40px + env(safe-area-inset-bottom));
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:520px;margin:0 auto}
+
+  header{color:#e8f3f1;margin-bottom:16px}
+  .eyebrow{font-family:'DM Mono',monospace;font-size:10.5px;letter-spacing:.28em;text-transform:uppercase;color:#9fd3e8;display:flex;gap:10px;align-items:center}
+  .eyebrow::before{content:"";width:22px;height:1px;background:#9fd3e8;display:inline-block}
+  h1{font-family:'Fraunces',serif;font-weight:600;font-size:clamp(30px,8vw,42px);line-height:.98;letter-spacing:-.02em;margin:6px 0 4px}
+  h1 em{font-style:italic;color:var(--gold);font-weight:600}
+  .controls{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  button.refresh{
+    font-family:'Hanken Grotesk',sans-serif;font-weight:600;font-size:13px;cursor:pointer;
+    background:var(--coral);color:#fff;border:none;padding:9px 16px;border-radius:999px;
+    box-shadow:0 8px 20px -8px var(--coral-deep)
+  }
+  button.refresh:active{transform:translateY(1px)}
+  .updated{font-family:'DM Mono',monospace;font-size:11px;color:#bcd9e6}
+
+  .cards{display:flex;flex-direction:column;gap:12px}
+  .card{
+    background:linear-gradient(180deg,#fbf4e6 0%,#f6ecd8 100%);
+    border-radius:18px;padding:16px;
+    box-shadow:0 16px 36px -20px rgba(0,0,0,.6);
+    border:1px solid rgba(255,255,255,.4)
+  }
+  .card-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .day{font-family:'Fraunces',serif;font-size:21px;font-weight:600}
+  .date{font-family:'DM Mono',monospace;font-size:11.5px;color:var(--mute)}
+
+  .big{display:grid;grid-template-columns:1.2fr 1fr;gap:10px;margin-top:12px}
+  .stat{background:rgba(6,36,58,.05);border-radius:12px;padding:11px 12px;border:1px solid rgba(6,36,58,.06)}
+  .stat .lab{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--mute)}
+  .stat .val{font-family:'DM Mono',monospace;font-size:30px;font-weight:500;line-height:1.05;margin-top:5px}
+  .stat .val small{font-size:13px;color:var(--mute);font-weight:400}
+  .stat .sub{font-size:12px;color:var(--mute);margin-top:3px}
+  .stat .sub b{color:var(--ink);font-weight:600}
+  .dir-arrow{display:inline-block;font-size:14px;line-height:1}
+
+  .sources{margin-top:11px;border-top:1px dashed var(--line);padding-top:9px}
+  .sources .lab{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--mute);margin-bottom:5px}
+  .srow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12.5px;color:#3a5567;padding:1.5px 0}
+  .srow .sv{font-family:'DM Mono',monospace;font-size:12.5px;color:var(--ink)}
+
+  .strip-wrap{margin-top:11px;border-top:1px dashed var(--line);padding-top:9px}
+  .strip-wrap .lab{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--mute);margin-bottom:5px}
+  .hl-hint{color:var(--gold);letter-spacing:.05em;text-transform:none}
+  .strip{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;scrollbar-width:thin}
+  table.hours{border-collapse:collapse;font-size:12px}
+  table.hours th,table.hours td{
+    font-family:'DM Mono',monospace;text-align:center;padding:3.5px 0;
+    min-width:36px;color:#3a5567;font-weight:400;white-space:nowrap
+  }
+  table.hours tr:first-child th{font-size:10px;color:var(--mute);border-bottom:1px solid rgba(6,36,58,.1)}
+  table.hours td b{font-weight:600;color:var(--ink)}
+  table.hours th.rowlab{
+    position:sticky;left:0;z-index:1;background:#f9f0dd;
+    font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);
+    text-align:left;padding:3.5px 8px 3.5px 4px;min-width:46px;
+    box-shadow:2px 0 4px -2px rgba(6,36,58,.15)
+  }
+  table.hours .hl{background:rgba(242,169,0,.16)}
+  table.hours tr:first-child th.hl{color:#b07c00;font-weight:600}
+
+  .q-auf{color:#177a52;font-weight:600}
+  .q-ab{color:#c23a26;font-weight:600}
+  .q-seit{color:var(--mute)}
+
+  .state{color:#e8f3f1;text-align:center;padding:50px 20px;font-size:15px;line-height:1.5}
+  .spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  footer{margin-top:22px;color:#8fbdd2;font-size:11px;line-height:1.6;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Cullera · Valencia</div>
+    <h1>Wind &amp; <em>Welle</em></h1>
+    <div class="controls">
+      <button class="refresh" id="refresh">&#8635; Aktualisieren</button>
+      <span class="updated" id="updated"></span>
+    </div>
+  </header>
+
+  <div id="content">
+    <div class="state"><div class="spinner"></div>Lade Vorhersage von 10 Modellen&hellip;</div>
+  </div>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+const LAT = 39.169, LON = -0.229, TZ = "Europe/Madrid";
+const FORECAST_DAYS = 5;
+const STRIP_START = 8, STRIP_END = 21;   // sichtbare Stundenleiste
+const SESSION_WEEKDAY = [15, 21];        // relevantes Fenster Mo–Fr (nach Feierabend)
+const SESSION_WEEKEND = [8, 21];         // Sa/So: ganzer Tag
+const STALE_MS = 30 * 60 * 1000;         // Auto-Refresh, wenn Daten älter sind
+
+function sessionWindow(dateStr){
+  const wd = new Date(dateStr+"T12:00:00").getDay(); // 0=So, 6=Sa
+  return (wd === 0 || wd === 6) ? SESSION_WEEKEND : SESSION_WEEKDAY;
+}
+
+const WIND_MODELS = [
+  {id:"ecmwf_ifs025",         name:"ECMWF"},
+  {id:"gfs_seamless",         name:"GFS · NOAA"},
+  {id:"icon_seamless",        name:"ICON · DWD"},
+  {id:"meteofrance_seamless", name:"Météo-France"},
+  {id:"ukmo_seamless",        name:"UK Met Office"},
+];
+const WAVE_MODELS = [
+  {id:"meteofrance_wave", name:"MFWAM"},
+  {id:"ecmwf_wam025",     name:"ECMWF WAM"},
+  {id:"ncep_gfswave025",  name:"GFS-Wave"},
+  {id:"ewam",             name:"EWAM"},
+  {id:"gwam",             name:"GWAM"},
+];
+
+let lastLoaded = 0;
+
+// ---------- Mathe-Helfer ----------
+const median = a => {
+  const s = a.filter(v => v != null).sort((x,y)=>x-y);
+  if (!s.length) return null;
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m-1]+s[m])/2;
+};
+const mean = a => {
+  const s = a.filter(v => v != null);
+  return s.length ? s.reduce((x,y)=>x+y,0)/s.length : null;
+};
+const circMean = degs => {
+  const s = degs.filter(v => v != null);
+  if (!s.length) return null;
+  let x=0, y=0;
+  s.forEach(d => { const r = d*Math.PI/180; x += Math.cos(r); y += Math.sin(r); });
+  return ((Math.atan2(y,x)*180/Math.PI)+360)%360;
+};
+const dirName = d => {
+  if (d == null) return "?";
+  const n = ["N","NNO","NO","ONO","O","OSO","SO","SSO","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+  return n[Math.round(((d%360)+360)%360/22.5)%16];
+};
+// Pfeil zeigt dahin, wohin der Wind weht (meteorologisch: d = woher er kommt)
+const dirArrow = d => d == null ? "" :
+  `<span class="dir-arrow" style="transform:rotate(${(d+180)%360}deg)">&#8593;</span>`;
+
+// Cullera-Strand schaut grob nach Osten:
+// Wind AUS Ost (45–135°) = auflandig (drückt an Land, sicher fürs Wingen),
+// Wind AUS West (225–315°) = ablandig (drückt aufs offene Meer – Vorsicht!)
+function windQuality(d){
+  if (d == null) return {label:"?", cls:"q-seit"};
+  const deg = ((d%360)+360)%360;
+  if (deg >= 45  && deg <= 135) return {label:"auflandig", cls:"q-auf"};
+  if (deg >= 225 && deg <= 315) return {label:"ablandig",  cls:"q-ab"};
+  return {label:"seitlich", cls:"q-seit"};
+}
+
+// ---------- Daten holen ----------
+async function getJSON(url){
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+
+// Bei mehreren Modellen suffixt Open-Meteo die Keys: wind_speed_10m_ecmwf_ifs025
+function seriesFor(hourly, base, modelId, modelCount){
+  if (modelCount === 1) return hourly[base] || null;
+  return hourly[`${base}_${modelId}`] || null;
+}
+
+async function fetchAll(){
+  const windUrl = "https://api.open-meteo.com/v1/forecast"
+    + `?latitude=${LAT}&longitude=${LON}`
+    + "&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m"
+    + "&wind_speed_unit=kn"
+    + `&models=${WIND_MODELS.map(m=>m.id).join(",")}`
+    + `&forecast_days=${FORECAST_DAYS}&timezone=${encodeURIComponent(TZ)}`;
+  const waveUrl = "https://marine-api.open-meteo.com/v1/marine"
+    + `?latitude=${LAT}&longitude=${LON}`
+    + "&hourly=wave_height,wave_period,wave_direction"
+    + `&models=${WAVE_MODELS.map(m=>m.id).join(",")}`
+    + `&forecast_days=${FORECAST_DAYS}&timezone=${encodeURIComponent(TZ)}`;
+  const [wind, wave] = await Promise.all([getJSON(windUrl), getJSON(waveUrl)]);
+  return {wind, wave};
+}
+
+// ---------- Aggregation ----------
+function windowIdx(times, dateStr, h0, h1){
+  const idx = [];
+  for (let i=0;i<times.length;i++){
+    if (times[i].slice(0,10) !== dateStr) continue;
+    const h = +times[i].slice(11,13);
+    if (h >= h0 && h <= h1) idx.push(i);
+  }
+  return idx;
+}
+
+function aggregate({wind, wave}){
+  const wTimes = wind.hourly.time;
+  const vTimes = wave.hourly.time;
+
+  // Tagesliste aus den Wind-Zeitstempeln
+  const dates = [...new Set(wTimes.map(t=>t.slice(0,10)))].sort().slice(0, FORECAST_DAYS);
+
+  return dates.map(d => {
+    // Ø-Werte über das relevante Session-Fenster (Mo–Fr 15–21, Sa/So ganztags)
+    const [s0, s1] = sessionWindow(d);
+    const wi = windowIdx(wTimes, d, s0, s1);
+    const vi = windowIdx(vTimes, d, s0, s1);
+
+    // Wind pro Quelle: Ø und Böen-Max im Fenster
+    const perSource = WIND_MODELS.map(m => {
+      const sp = seriesFor(wind.hourly, "wind_speed_10m", m.id, WIND_MODELS.length);
+      const gu = seriesFor(wind.hourly, "wind_gusts_10m", m.id, WIND_MODELS.length);
+      if (!sp) return null;
+      const gusts = gu ? wi.map(i=>gu[i]).filter(v=>v!=null) : [];
+      return {
+        name: m.name,
+        avg: mean(wi.map(i=>sp[i])),
+        gustMax: gusts.length ? Math.max(...gusts) : null,
+      };
+    }).filter(s => s && s.avg != null);
+
+    const dirAll = [];
+    WIND_MODELS.forEach(m => {
+      const dr = seriesFor(wind.hourly, "wind_direction_10m", m.id, WIND_MODELS.length);
+      if (dr) wi.forEach(i => dirAll.push(dr[i]));
+    });
+
+    // Welle pro Quelle: Ø Höhe/Periode im Fenster
+    const waveSources = WAVE_MODELS.map(m => {
+      const wh = seriesFor(wave.hourly, "wave_height", m.id, WAVE_MODELS.length);
+      const wp = seriesFor(wave.hourly, "wave_period", m.id, WAVE_MODELS.length);
+      if (!wh) return null;
+      return {name:m.name, h:mean(vi.map(i=>wh[i])), p:wp?mean(vi.map(i=>wp[i])):null};
+    }).filter(s => s && s.h != null);
+
+    const waveDirAll = [];
+    WAVE_MODELS.forEach(m => {
+      const dr = seriesFor(wave.hourly, "wave_direction", m.id, WAVE_MODELS.length);
+      if (dr) vi.forEach(i => waveDirAll.push(dr[i]));
+    });
+
+    // Stundenleiste 8–21 Uhr: Median über die Quellen je Stunde,
+    // Session-Fenster-Stunden werden markiert (hl)
+    const stripIdx = windowIdx(wTimes, d, STRIP_START, STRIP_END);
+    const hours = stripIdx.map(i => {
+      const t = wTimes[i];
+      const h = +t.slice(11,13);
+      const sp = [], gu = [], dr = [];
+      WIND_MODELS.forEach(m => {
+        const s = seriesFor(wind.hourly, "wind_speed_10m", m.id, WIND_MODELS.length);
+        const g = seriesFor(wind.hourly, "wind_gusts_10m", m.id, WIND_MODELS.length);
+        const r = seriesFor(wind.hourly, "wind_direction_10m", m.id, WIND_MODELS.length);
+        if (s) sp.push(s[i]); if (g) gu.push(g[i]); if (r) dr.push(r[i]);
+      });
+      const vIdx = vTimes.indexOf(t);
+      const wh = [];
+      if (vIdx >= 0) WAVE_MODELS.forEach(m => {
+        const hs = seriesFor(wave.hourly, "wave_height", m.id, WAVE_MODELS.length);
+        if (hs) wh.push(hs[vIdx]);
+      });
+      // hl nur, wenn das Fenster enger als die Leiste ist (Mo–Fr)
+      const hl = s0 > STRIP_START && h >= s0 && h <= s1;
+      return {t, hl, wind:median(sp), gust:median(gu), dir:circMean(dr), wave:median(wh)};
+    });
+
+    return {
+      date: d,
+      winStart: s0, winEnd: s1,
+      windAvg:  median(perSource.map(s=>s.avg)),
+      windMin:  perSource.length ? Math.min(...perSource.map(s=>s.avg)) : null,
+      windMax:  perSource.length ? Math.max(...perSource.map(s=>s.avg)) : null,
+      gustMax:  median(perSource.map(s=>s.gustMax)),
+      windDir:  circMean(dirAll),
+      perSource,
+      waveH:    median(waveSources.map(s=>s.h)),
+      waveP:    median(waveSources.map(s=>s.p)),
+      waveDir:  circMean(waveDirAll),
+      waveSourceCount: waveSources.length,
+      hours,
+    };
+  });
+}
+
+// ---------- Rendering ----------
+function dayLabel(dateStr, idx){
+  if (idx === 0) return "Heute";
+  if (idx === 1) return "Morgen";
+  return new Date(dateStr+"T12:00:00").toLocaleDateString("de-DE",{weekday:"long"});
+}
+
+function render(days){
+  const fmt1 = v => v==null ? "–" : v.toFixed(1);
+  const fmt0 = v => v==null ? "–" : Math.round(v).toString();
+
+  let html = '<div class="cards">';
+  days.forEach((d, idx) => {
+    const dateStr = new Date(d.date+"T12:00:00")
+      .toLocaleDateString("de-DE",{day:"2-digit",month:"long"});
+    const srcRows = d.perSource.map(s =>
+      `<div class="srow"><span>${s.name}</span><span class="sv">${fmt0(s.avg)} kn</span></div>`
+    ).join("");
+
+    // Stundenleiste: transponierte Tabelle (Stunden = Spalten), Fenster markiert
+    const hlc = h => h.hl ? ' class="hl"' : "";
+    const stripRows = [
+      ["Uhr",   d.hours.map(h=>`<th${hlc(h)}>${h.t.slice(11,13)}</th>`).join("")],
+      ["Wind",  d.hours.map(h=>`<td${hlc(h)}><b>${fmt0(h.wind)}</b></td>`).join("")],
+      ["Böen",  d.hours.map(h=>`<td${hlc(h)}>${fmt0(h.gust)}</td>`).join("")],
+      ["Richt.",d.hours.map(h=>`<td${hlc(h)}><span class="${windQuality(h.dir).cls}" title="${windQuality(h.dir).label}">${dirName(h.dir)}</span></td>`).join("")],
+      ["Welle", d.hours.map(h=>`<td${hlc(h)}>${fmt1(h.wave)}</td>`).join("")],
+    ].map(([lab, cells]) => `<tr><th class="rowlab">${lab}</th>${cells}</tr>`).join("");
+
+    html += `
+    <div class="card">
+      <div class="card-head">
+        <span class="day">${dayLabel(d.date, idx)}</span>
+        <span class="date">${dateStr} · Ø ${d.winStart}–${d.winEnd} Uhr</span>
+      </div>
+      <div class="big">
+        <div class="stat">
+          <div class="lab">Wind Ø</div>
+          <div class="val">${fmt0(d.windAvg)} <small>kn</small></div>
+          <div class="sub">${dirArrow(d.windDir)} aus <b>${dirName(d.windDir)}</b> · <span class="${windQuality(d.windDir).cls}">${windQuality(d.windDir).label}</span></div>
+          <div class="sub">Böen <b>${fmt0(d.gustMax)} kn</b> · Spanne ${fmt0(d.windMin)}–${fmt0(d.windMax)} kn</div>
+        </div>
+        <div class="stat">
+          <div class="lab">Welle Ø</div>
+          <div class="val">${fmt1(d.waveH)} <small>m</small></div>
+          <div class="sub">Periode <b>${fmt0(d.waveP)} s</b></div>
+          <div class="sub">aus <b>${dirName(d.waveDir)}</b></div>
+        </div>
+      </div>
+      <div class="strip-wrap">
+        <div class="lab">Stundenverlauf${d.hours.some(h=>h.hl)
+          ? ` <span class="hl-hint">■ ${d.winStart}–${d.winEnd} Uhr</span>` : ""}</div>
+        <div class="strip"><table class="hours">${stripRows}</table></div>
+      </div>
+      <div class="sources">
+        <div class="lab">Wind je Quelle (Ø)</div>
+        ${srcRows}
+      </div>
+    </div>`;
+  });
+  html += "</div>";
+  document.getElementById("content").innerHTML = html;
+
+  // Unter der Woche direkt zum relevanten Fenster scrollen
+  document.querySelectorAll(".strip").forEach(el => {
+    const hl = el.querySelector(".hl");
+    if (hl) el.scrollLeft = Math.max(0, hl.offsetLeft - 52);
+  });
+}
+
+async function load(){
+  document.getElementById("content").innerHTML =
+    '<div class="state"><div class="spinner"></div>Lade Vorhersage von 10 Modellen&hellip;</div>';
+  try{
+    const data = await fetchAll();
+    const days = aggregate(data);
+    render(days);
+    lastLoaded = Date.now();
+    document.getElementById("updated").textContent =
+      "Stand: " + new Date().toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+    const nWave = days[0] ? days[0].waveSourceCount : 0;
+    const nWind = days[0] ? days[0].perSource.length : 0;
+    document.getElementById("foot").textContent =
+      `Ø = Median über ${nWind} Windmodelle bzw. ${nWave} Wellenmodelle. `
+      + `Ø-Fenster: Mo–Fr ${SESSION_WEEKDAY[0]}–${SESSION_WEEKDAY[1]} Uhr, Sa/So ganztags. `
+      + "Grün = auflandig (Wind vom Meer, drückt an Land). "
+      + "Rot = ablandig (drückt aufs offene Meer – Vorsicht!). "
+      + "Daten: Open-Meteo (CC-BY 4.0). Modelle rechnen mit 5–25 km Auflösung – "
+      + "Küstenwerte sind Näherungen, kein Ersatz für den Blick aufs Meer.";
+  }catch(e){
+    document.getElementById("content").innerHTML =
+      `<div class="state">Vorhersage konnte nicht geladen werden.<br>(${e.message})<br><br>Internetverbindung prüfen und oben aktualisieren.</div>`;
+  }
+}
+
+document.getElementById("refresh").addEventListener("click", load);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && Date.now() - lastLoaded > STALE_MS) load();
+});
+load();
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
+</body>
+</html>
