@@ -46,13 +46,6 @@
   }
   button.refresh:active{transform:translateY(1px)}
   .updated{font-family:'DM Mono',monospace;font-size:11px;color:#bcd9e6}
-  .push-btn{background:var(--sea-500);box-shadow:0 8px 20px -8px var(--sea-700)}
-  .push-panel{margin-top:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px}
-  .push-panel p{font-size:12.5px;color:#dcecf3;line-height:1.5;margin-bottom:8px}
-  .push-panel textarea{
-    width:100%;font-family:'DM Mono',monospace;font-size:10px;color:#0c2c44;
-    border:none;border-radius:8px;padding:8px;margin-bottom:8px;background:#e8f3f1;resize:vertical
-  }
 
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{
@@ -72,7 +65,17 @@
   .stat .val small{font-size:13px;color:var(--mute);font-weight:400}
   .stat .sub{font-size:12px;color:var(--mute);margin-top:3px}
   .stat .sub b{color:var(--ink);font-weight:600}
+  .stat .val small.at{font-size:12px;color:var(--mute);font-weight:400;letter-spacing:0}
+  .stat .sub.spread{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--mute);margin-top:4px}
+  .stat .sub.spread-warn{color:var(--coral-deep);font-weight:500}
   .dir-arrow{display:inline-block;font-size:14px;line-height:1}
+
+  .srow-lead{font-weight:600;color:var(--ink)}
+  .srow .res{font-family:'DM Mono',monospace;font-size:10px;color:var(--mute);font-weight:400}
+  .lead-tag{
+    font-family:'DM Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;
+    background:var(--gold);color:#3d2a00;border-radius:4px;padding:1.5px 5px;margin-left:3px;font-weight:500
+  }
 
   .sources{margin-top:11px;border-top:1px dashed var(--line);padding-top:9px}
   .sources .lab{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--mute);margin-bottom:5px}
@@ -116,18 +119,12 @@
     <h1>Wind &amp; <em>Welle</em></h1>
     <div class="controls">
       <button class="refresh" id="refresh">&#8635; Aktualisieren</button>
-      <button class="refresh push-btn" id="pushBtn" hidden>&#128276; Push aktivieren</button>
       <span class="updated" id="updated"></span>
-    </div>
-    <div class="push-panel" id="pushPanel" hidden>
-      <p id="pushInfo"></p>
-      <textarea id="subJson" readonly rows="4"></textarea>
-      <button class="refresh" id="copySub">Kopieren</button>
     </div>
   </header>
 
   <div id="content">
-    <div class="state"><div class="spinner"></div>Lade Vorhersage von 10 Modellen&hellip;</div>
+    <div class="state"><div class="spinner"></div>Lade Vorhersage&hellip;</div>
   </div>
 
   <footer id="foot"></footer>
@@ -146,30 +143,34 @@ function sessionWindow(dateStr){
   return (wd === 0 || wd === 6) ? SESSION_WEEKEND : SESSION_WEEKDAY;
 }
 
+// Leitmodell-Prinzip: Für die Küste bei Cullera zählt die feinste Auflösung,
+// nicht der Durchschnitt. Die Seebrise ist kleinräumig – grobe Globalmodelle
+// verschmieren Land und Meer in einer Gitterzelle und dämpfen sie weg.
+// Reihenfolge = Priorität. Das erste Modell mit Daten für den Tag führt,
+// der Rest dient nur als Streuungs-/Vertrauensangabe.
+// AROME reicht ~69 h, danach übernehmen die gröberen Modelle automatisch.
+// Bewusst NICHT dabei: ECMWF IFS 0.25° – rastet auf 39,0/-0,25 ein und misst
+// damit rund 19 km südlich von Cullera, konstant zu niedrig.
 const WIND_MODELS = [
-  {id:"ecmwf_ifs025",         name:"ECMWF"},
-  {id:"gfs_seamless",         name:"GFS · NOAA"},
-  {id:"icon_seamless",        name:"ICON · DWD"},
-  {id:"meteofrance_seamless", name:"Météo-France"},
-  {id:"ukmo_seamless",        name:"UK Met Office"},
+  {id:"meteofrance_arome_france_hd",    name:"AROME HD",      res:"1,5 km"},
+  {id:"meteofrance_arome_france",       name:"AROME",         res:"2,5 km"},
+  {id:"icon_eu",                        name:"ICON-EU · DWD", res:"7 km"},
+  {id:"ukmo_global_deterministic_10km", name:"UK Met Office", res:"10 km"},
+  {id:"meteofrance_arpege_europe",      name:"ARPEGE",        res:"11 km"},
+  {id:"gfs_seamless",                   name:"GFS · NOAA",    res:"13 km"},
 ];
+// EWAM trifft mit 39,15/-0,20 den Küstenpunkt am genauesten.
+// Nicht dabei: GFS-Wave – rastet auf 39,25/0,0 ein, ~20 km draußen auf See.
 const WAVE_MODELS = [
-  {id:"meteofrance_wave", name:"MFWAM"},
-  {id:"ecmwf_wam025",     name:"ECMWF WAM"},
-  {id:"ncep_gfswave025",  name:"GFS-Wave"},
-  {id:"ewam",             name:"EWAM"},
-  {id:"gwam",             name:"GWAM"},
+  {id:"ewam",             name:"EWAM",      res:"5 km"},
+  {id:"meteofrance_wave", name:"MFWAM",     res:"10 km"},
+  {id:"ecmwf_wam025",     name:"ECMWF WAM", res:"25 km"},
+  {id:"gwam",             name:"GWAM",      res:"25 km"},
 ];
 
 let lastLoaded = 0;
 
 // ---------- Mathe-Helfer ----------
-const median = a => {
-  const s = a.filter(v => v != null).sort((x,y)=>x-y);
-  if (!s.length) return null;
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m-1]+s[m])/2;
-};
 const mean = a => {
   const s = a.filter(v => v != null);
   return s.length ? s.reduce((x,y)=>x+y,0)/s.length : null;
@@ -254,75 +255,99 @@ function aggregate({wind, wave}){
     const wi = windowIdx(wTimes, d, s0, s1);
     const vi = windowIdx(vTimes, d, s0, s1);
 
-    // Wind pro Quelle: Ø und Böen-Max im Fenster
+    // Wind pro Quelle: Spitze, Ø und Böen-Max im Fenster.
+    // Die Spitze ist die entscheidende Zahl – ein Fenstermittel über 8–21 Uhr
+    // verrechnet die tote Vormittagsflaute mit der Nachmittagsthermik und
+    // lässt einen brauchbaren Tag nach Flaute aussehen.
     const perSource = WIND_MODELS.map(m => {
       const sp = seriesFor(wind.hourly, "wind_speed_10m", m.id, WIND_MODELS.length);
       const gu = seriesFor(wind.hourly, "wind_gusts_10m", m.id, WIND_MODELS.length);
+      const dr = seriesFor(wind.hourly, "wind_direction_10m", m.id, WIND_MODELS.length);
       if (!sp) return null;
+      const speeds = wi.map(i=>sp[i]).filter(v=>v!=null);
+      if (!speeds.length) return null;
       const gusts = gu ? wi.map(i=>gu[i]).filter(v=>v!=null) : [];
+      const peak = Math.max(...speeds);
+      const peakI = wi.find(i => sp[i] === peak);
       return {
-        name: m.name,
+        name: m.name, res: m.res, id: m.id,
+        // AROME endet nach ~69 h mitten im Tag. Ein Modell, das das Fenster nur
+        // halb abdeckt, darf nicht führen – sonst wäre die "Spitze" auf einem
+        // abgeschnittenen Fenster berechnet und könnte die echte verfehlen.
+        complete: speeds.length === wi.length,
+        peak,
+        peakHour: peakI != null ? +wTimes[peakI].slice(11,13) : null,
+        peakDir: (dr && peakI != null) ? dr[peakI] : null,
         avg: mean(wi.map(i=>sp[i])),
         gustMax: gusts.length ? Math.max(...gusts) : null,
       };
-    }).filter(s => s && s.avg != null);
+    }).filter(Boolean);
 
-    const dirAll = [];
-    WIND_MODELS.forEach(m => {
-      const dr = seriesFor(wind.hourly, "wind_direction_10m", m.id, WIND_MODELS.length);
-      if (dr) wi.forEach(i => dirAll.push(dr[i]));
-    });
+    // Leitmodell = feinste Auflösung, die das Fenster lückenlos abdeckt
+    const lead = perSource.find(s => s.complete) || perSource[0] || null;
 
     // Welle pro Quelle: Ø Höhe/Periode im Fenster
     const waveSources = WAVE_MODELS.map(m => {
       const wh = seriesFor(wave.hourly, "wave_height", m.id, WAVE_MODELS.length);
       const wp = seriesFor(wave.hourly, "wave_period", m.id, WAVE_MODELS.length);
-      if (!wh) return null;
-      return {name:m.name, h:mean(vi.map(i=>wh[i])), p:wp?mean(vi.map(i=>wp[i])):null};
-    }).filter(s => s && s.h != null);
-
-    const waveDirAll = [];
-    WAVE_MODELS.forEach(m => {
       const dr = seriesFor(wave.hourly, "wave_direction", m.id, WAVE_MODELS.length);
-      if (dr) vi.forEach(i => waveDirAll.push(dr[i]));
-    });
+      if (!wh) return null;
+      const h = mean(vi.map(i=>wh[i]));
+      if (h == null) return null;
+      return {
+        name: m.name, res: m.res, id: m.id,
+        complete: vi.every(i => wh[i] != null),
+        h,
+        p: wp ? mean(vi.map(i=>wp[i])) : null,
+        dir: dr ? circMean(vi.map(i=>dr[i])) : null,
+      };
+    }).filter(Boolean);
 
-    // Stundenleiste 8–21 Uhr: Median über die Quellen je Stunde,
+    const waveLead = waveSources.find(s => s.complete) || waveSources[0] || null;
+
+    // Stundenleiste 8–21 Uhr: Werte des Leitmodells (nicht gemittelt),
     // Session-Fenster-Stunden werden markiert (hl)
+    const leadSp  = lead ? seriesFor(wind.hourly, "wind_speed_10m",     lead.id, WIND_MODELS.length) : null;
+    const leadGu  = lead ? seriesFor(wind.hourly, "wind_gusts_10m",     lead.id, WIND_MODELS.length) : null;
+    const leadDr  = lead ? seriesFor(wind.hourly, "wind_direction_10m", lead.id, WIND_MODELS.length) : null;
+    const leadWh  = waveLead ? seriesFor(wave.hourly, "wave_height", waveLead.id, WAVE_MODELS.length) : null;
+
     const stripIdx = windowIdx(wTimes, d, STRIP_START, STRIP_END);
     const hours = stripIdx.map(i => {
       const t = wTimes[i];
       const h = +t.slice(11,13);
-      const sp = [], gu = [], dr = [];
-      WIND_MODELS.forEach(m => {
-        const s = seriesFor(wind.hourly, "wind_speed_10m", m.id, WIND_MODELS.length);
-        const g = seriesFor(wind.hourly, "wind_gusts_10m", m.id, WIND_MODELS.length);
-        const r = seriesFor(wind.hourly, "wind_direction_10m", m.id, WIND_MODELS.length);
-        if (s) sp.push(s[i]); if (g) gu.push(g[i]); if (r) dr.push(r[i]);
-      });
       const vIdx = vTimes.indexOf(t);
-      const wh = [];
-      if (vIdx >= 0) WAVE_MODELS.forEach(m => {
-        const hs = seriesFor(wave.hourly, "wave_height", m.id, WAVE_MODELS.length);
-        if (hs) wh.push(hs[vIdx]);
-      });
       // hl nur, wenn das Fenster enger als die Leiste ist (Mo–Fr)
       const hl = s0 > STRIP_START && h >= s0 && h <= s1;
-      return {t, hl, wind:median(sp), gust:median(gu), dir:circMean(dr), wave:median(wh)};
+      return {
+        t, hl,
+        wind: leadSp ? leadSp[i] : null,
+        gust: leadGu ? leadGu[i] : null,
+        dir:  leadDr ? leadDr[i] : null,
+        wave: (leadWh && vIdx >= 0) ? leadWh[vIdx] : null,
+      };
     });
+
+    // Streuung über alle Modelle: wie einig sich die Quellen über die Spitze sind
+    const peaks = perSource.map(s=>s.peak);
 
     return {
       date: d,
       winStart: s0, winEnd: s1,
-      windAvg:  median(perSource.map(s=>s.avg)),
-      windMin:  perSource.length ? Math.min(...perSource.map(s=>s.avg)) : null,
-      windMax:  perSource.length ? Math.max(...perSource.map(s=>s.avg)) : null,
-      gustMax:  median(perSource.map(s=>s.gustMax)),
-      windDir:  circMean(dirAll),
+      leadName: lead ? lead.name : null,
+      leadRes:  lead ? lead.res  : null,
+      windPeak: lead ? lead.peak : null,
+      peakHour: lead ? lead.peakHour : null,
+      windAvg:  lead ? lead.avg : null,
+      gustMax:  lead ? lead.gustMax : null,
+      windDir:  lead ? lead.peakDir : null,
+      spreadMin: peaks.length ? Math.min(...peaks) : null,
+      spreadMax: peaks.length ? Math.max(...peaks) : null,
       perSource,
-      waveH:    median(waveSources.map(s=>s.h)),
-      waveP:    median(waveSources.map(s=>s.p)),
-      waveDir:  circMean(waveDirAll),
+      waveH:    waveLead ? waveLead.h : null,
+      waveP:    waveLead ? waveLead.p : null,
+      waveDir:  waveLead ? waveLead.dir : null,
+      waveLeadName: waveLead ? waveLead.name : null,
       waveSourceCount: waveSources.length,
       hours,
     };
@@ -344,9 +369,18 @@ function render(days){
   days.forEach((d, idx) => {
     const dateStr = new Date(d.date+"T12:00:00")
       .toLocaleDateString("de-DE",{day:"2-digit",month:"long"});
-    const srcRows = d.perSource.map(s =>
-      `<div class="srow"><span>${s.name}</span><span class="sv">${fmt0(s.avg)} kn</span></div>`
-    ).join("");
+    const srcRows = d.perSource.map(s => {
+      const isLead = s.name === d.leadName;
+      return `<div class="srow${isLead ? " srow-lead" : ""}">`
+        + `<span>${s.name} <span class="res">${s.res}</span>`
+        + `${isLead ? ' <span class="lead-tag">Leitmodell</span>' : ""}`
+        + `${!s.complete ? ' <span class="res">unvollständig</span>' : ""}</span>`
+        + `<span class="sv">${fmt0(s.peak)} kn</span></div>`;
+    }).join("");
+
+    // Große Streuung = die Modelle sind sich uneinig, Prognose unsicher
+    const spread = (d.spreadMax != null && d.spreadMin != null) ? d.spreadMax - d.spreadMin : null;
+    const spreadWarn = spread != null && spread >= 6;
 
     // Stundenleiste: transponierte Tabelle (Stunden = Spalten), Fenster markiert
     const hlc = h => h.hl ? ' class="hl"' : "";
@@ -362,20 +396,24 @@ function render(days){
     <div class="card">
       <div class="card-head">
         <span class="day">${dayLabel(d.date, idx)}</span>
-        <span class="date">${dateStr} · Ø ${d.winStart}–${d.winEnd} Uhr</span>
+        <span class="date">${dateStr} · ${d.winStart}–${d.winEnd} Uhr</span>
       </div>
       <div class="big">
         <div class="stat">
-          <div class="lab">Wind Ø</div>
-          <div class="val">${fmt0(d.windAvg)} <small>kn</small></div>
+          <div class="lab">Wind Spitze</div>
+          <div class="val">${fmt0(d.windPeak)} <small>kn</small>${
+            d.peakHour != null ? ` <small class="at">um ${String(d.peakHour).padStart(2,"0")} Uhr</small>` : ""}</div>
           <div class="sub">${dirArrow(d.windDir)} aus <b>${dirName(d.windDir)}</b> · <span class="${windQuality(d.windDir).cls}">${windQuality(d.windDir).label}</span></div>
-          <div class="sub">Böen <b>${fmt0(d.gustMax)} kn</b> · Spanne ${fmt0(d.windMin)}–${fmt0(d.windMax)} kn</div>
+          <div class="sub">Böen <b>${fmt0(d.gustMax)} kn</b> · Ø Fenster ${fmt0(d.windAvg)} kn</div>
+          <div class="sub spread${spreadWarn ? " spread-warn" : ""}">Modelle ${fmt0(d.spreadMin)}–${fmt0(d.spreadMax)} kn${
+            spreadWarn ? " · unsicher" : ""}</div>
         </div>
         <div class="stat">
           <div class="lab">Welle Ø</div>
           <div class="val">${fmt1(d.waveH)} <small>m</small></div>
           <div class="sub">Periode <b>${fmt0(d.waveP)} s</b></div>
           <div class="sub">aus <b>${dirName(d.waveDir)}</b></div>
+          <div class="sub spread">${d.waveLeadName || "–"}</div>
         </div>
       </div>
       <div class="strip-wrap">
@@ -384,7 +422,7 @@ function render(days){
         <div class="strip"><table class="hours">${stripRows}</table></div>
       </div>
       <div class="sources">
-        <div class="lab">Wind je Quelle (Ø)</div>
+        <div class="lab">Spitze je Quelle · Leitmodell zuerst</div>
         ${srcRows}
       </div>
     </div>`;
@@ -401,7 +439,7 @@ function render(days){
 
 async function load(){
   document.getElementById("content").innerHTML =
-    '<div class="state"><div class="spinner"></div>Lade Vorhersage von 10 Modellen&hellip;</div>';
+    '<div class="state"><div class="spinner"></div>Lade Vorhersage&hellip;</div>';
   try{
     const data = await fetchAll();
     const days = aggregate(data);
@@ -409,15 +447,18 @@ async function load(){
     lastLoaded = Date.now();
     document.getElementById("updated").textContent =
       "Stand: " + new Date().toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-    const nWave = days[0] ? days[0].waveSourceCount : 0;
+    const lead = days[0] ? days[0].leadName : "–";
+    const leadRes = days[0] ? days[0].leadRes : "";
     const nWind = days[0] ? days[0].perSource.length : 0;
     document.getElementById("foot").textContent =
-      `Ø = Median über ${nWind} Windmodelle bzw. ${nWave} Wellenmodelle. `
-      + `Ø-Fenster: Mo–Fr ${SESSION_WEEKDAY[0]}–${SESSION_WEEKDAY[1]} Uhr, Sa/So ganztags. `
+      `Alle Zahlen stammen vom Leitmodell (heute ${lead}, ${leadRes}) – nicht gemittelt. `
+      + `Die ${nWind} Quellen werden nur zur Streuung ausgewiesen: liegen sie weit auseinander, ist die Prognose unsicher. `
+      + `Spitze = höchster Stundenwert im Fenster (Mo–Fr ${SESSION_WEEKDAY[0]}–${SESSION_WEEKDAY[1]} Uhr, Sa/So ganztags), `
+      + "weil ein Tagesmittel die Nachmittagsthermik wegrechnet. "
       + "Grün = auflandig (Wind vom Meer, drückt an Land). "
       + "Rot = ablandig (drückt aufs offene Meer – Vorsicht!). "
-      + "Daten: Open-Meteo (CC-BY 4.0). Modelle rechnen mit 5–25 km Auflösung – "
-      + "Küstenwerte sind Näherungen, kein Ersatz für den Blick aufs Meer.";
+      + "Daten: Open-Meteo (CC-BY 4.0). Auch 1,5 km bleibt ein Modell – "
+      + "kein Ersatz für den Blick aufs Meer.";
   }catch(e){
     document.getElementById("content").innerHTML =
       `<div class="state">Vorhersage konnte nicht geladen werden.<br>(${e.message})<br><br>Internetverbindung prüfen und oben aktualisieren.</div>`;
@@ -430,74 +471,11 @@ document.addEventListener("visibilitychange", () => {
 });
 load();
 
-// ---------- Web Push ----------
-const VAPID_PUBLIC_KEY = "BHNQBYj_4AqFJf7C6xafkpbFYVIszk9x0ioQsQE5jPoTNFNtaacXCtHwCD0_W43EbKxss2dqMYNl2tu5PWixD8o";
-
-function urlB64ToUint8(s){
-  const pad = "=".repeat((4 - s.length % 4) % 4);
-  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
-  return Uint8Array.from(raw, c => c.charCodeAt(0));
+// ---------- Service Worker ----------
+// Registriert die App-Shell fuer Offline-Start und Installierbarkeit.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(err => console.warn("SW-Registrierung fehlgeschlagen:", err));
 }
-
-const pushBtn = document.getElementById("pushBtn");
-const pushPanel = document.getElementById("pushPanel");
-const pushInfo = document.getElementById("pushInfo");
-const subJson = document.getElementById("subJson");
-
-function showSubscription(sub, fresh){
-  subJson.value = JSON.stringify(sub);
-  pushInfo.textContent = fresh
-    ? "Push ist aktiv! Diesen Code einmalig kopieren und an Claude schicken, damit die Berichte hier ankommen:"
-    : "Push ist bereits aktiv. Falls der Code nochmal gebraucht wird:";
-  pushPanel.hidden = false;
-  pushBtn.textContent = "\u{1F514} Push aktiv";
-  pushBtn.disabled = true;
-}
-
-async function initPush(){
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-  const reg = await navigator.serviceWorker.register("sw.js");
-  pushBtn.hidden = false;
-  const existing = await reg.pushManager.getSubscription();
-  if (existing && Notification.permission === "granted"){
-    showSubscription(existing, false);
-    pushPanel.hidden = true;           // nicht aufdrängen, Button zeigt Status
-    pushBtn.textContent = "\u{1F514} Push aktiv";
-    pushBtn.disabled = false;          // Tippen zeigt den Code nochmal
-    pushBtn.onclick = () => { pushPanel.hidden = !pushPanel.hidden; };
-    return;
-  }
-  pushBtn.onclick = async () => {
-    try{
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted"){
-        pushInfo.textContent = "Benachrichtigungen wurden nicht erlaubt. In den Android-Einstellungen für diese App freigeben und erneut versuchen.";
-        subJson.value = ""; pushPanel.hidden = false;
-        return;
-      }
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY),
-      });
-      showSubscription(sub, true);
-    }catch(err){
-      pushInfo.textContent = "Aktivierung fehlgeschlagen: " + err.message;
-      subJson.value = ""; pushPanel.hidden = false;
-    }
-  };
-}
-
-document.getElementById("copySub").addEventListener("click", async () => {
-  try{
-    await navigator.clipboard.writeText(subJson.value);
-    document.getElementById("copySub").textContent = "Kopiert ✓";
-  }catch{
-    subJson.select(); document.execCommand("copy");
-    document.getElementById("copySub").textContent = "Kopiert ✓";
-  }
-});
-
-initPush();
 </script>
 </body>
 </html>

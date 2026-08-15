@@ -1,6 +1,6 @@
-// Service Worker: App-Shell-Cache für Offline-Start + Web-Push-Empfang.
+// Service Worker: App-Shell-Cache für Offline-Start.
 // Wetterdaten (api.open-meteo.com) werden NIE gecacht – immer live.
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL = [
   "./",
   "index.html",
@@ -20,6 +20,11 @@ self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+      // Altlast aufräumen: Push-Subscriptions aus der früheren Notification-Version
+      // abmelden – es gibt keinen Absender mehr.
+      .then(() => self.registration.pushManager.getSubscription())
+      .then((sub) => sub && sub.unsubscribe())
+      .catch(() => {})
       .then(() => self.clients.claim())
   );
 });
@@ -57,31 +62,6 @@ self.addEventListener("fetch", (e) => {
         })
         .catch(() => cached);
       return cached || fresh;
-    })
-  );
-});
-
-// ---------- Web Push ----------
-self.addEventListener("push", (e) => {
-  let data = {};
-  try { data = e.data ? e.data.json() : {}; } catch { data = { body: e.data && e.data.text() }; }
-  e.waitUntil(
-    self.registration.showNotification(data.title || "Cullera Wind & Welle", {
-      body: data.body || "",
-      icon: "icons/icon-192.png",
-      badge: "icons/icon-192.png",
-      tag: "cullera-wind",          // neue Meldung ersetzt die alte statt zu stapeln
-      data: { url: data.url || "./" },
-    })
-  );
-});
-
-self.addEventListener("notificationclick", (e) => {
-  e.notification.close();
-  e.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      for (const c of list) if ("focus" in c) return c.focus();
-      return self.clients.openWindow((e.notification.data && e.notification.data.url) || "./");
     })
   );
 });
