@@ -133,9 +133,14 @@
 <script>
 const LAT = 39.169, LON = -0.229, TZ = "Europe/Madrid";
 const FORECAST_DAYS = 5;
-const STRIP_START = 8, STRIP_END = 21;   // sichtbare Stundenleiste
-const SESSION_WEEKDAY = [15, 21];        // relevantes Fenster Mo–Fr (nach Feierabend)
-const SESSION_WEEKEND = [8, 21];         // Sa/So: ganzer Tag
+// Fensterende 20 Uhr statt 21: Sonnenuntergang ist im August gegen 20:55, die
+// 21-Uhr-Stunde ist also ohnehin dunkel. Entscheidend ist aber der Nebeneffekt –
+// AROME reicht am dritten Tag exakt bis 20 Uhr. Mit Fensterende 21 fiel es dort
+// als "unvollständig" raus und der Tag wurde von ICON-EU (7 km) geführt;
+// mit 20 Uhr führt es auch an Tag 3 mit 1,5 km.
+const STRIP_START = 8, STRIP_END = 20;   // sichtbare Stundenleiste
+const SESSION_WEEKDAY = [15, 20];        // relevantes Fenster Mo–Fr (nach Feierabend)
+const SESSION_WEEKEND = [8, 20];         // Sa/So: ganzer Tag
 const STALE_MS = 30 * 60 * 1000;         // Auto-Refresh, wenn Daten älter sind
 
 function sessionWindow(dateStr){
@@ -453,8 +458,9 @@ async function load(){
     document.getElementById("foot").textContent =
       `Alle Zahlen stammen vom Leitmodell (heute ${lead}, ${leadRes}) – nicht gemittelt. `
       + `Die ${nWind} Quellen werden nur zur Streuung ausgewiesen: liegen sie weit auseinander, ist die Prognose unsicher. `
-      + `Spitze = höchster Stundenwert im Fenster (Mo–Fr ${SESSION_WEEKDAY[0]}–${SESSION_WEEKDAY[1]} Uhr, Sa/So ganztags), `
-      + "weil ein Tagesmittel die Nachmittagsthermik wegrechnet. "
+      + `Spitze = höchster Stundenwert im Fenster (Mo–Fr ${SESSION_WEEKDAY[0]}–${SESSION_WEEKDAY[1]} Uhr, `
+      + `Sa/So ${SESSION_WEEKEND[0]}–${SESSION_WEEKEND[1]} Uhr), weil ein Tagesmittel die Nachmittagsthermik wegrechnet. `
+      + `Fensterende ${SESSION_WEEKDAY[1]} Uhr: danach ist Sonnenuntergang – und AROME reicht am dritten Tag genau bis dahin. `
       + "Grün = auflandig (Wind vom Meer, drückt an Land). "
       + "Rot = ablandig (drückt aufs offene Meer – Vorsicht!). "
       + "Daten: Open-Meteo (CC-BY 4.0). Auch 1,5 km bleibt ein Modell – "

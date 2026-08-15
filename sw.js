@@ -1,6 +1,6 @@
 // Service Worker: App-Shell-Cache für Offline-Start.
 // Wetterdaten (api.open-meteo.com) werden NIE gecacht – immer live.
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL = [
   "./",
   "index.html",
