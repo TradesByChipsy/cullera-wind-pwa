@@ -47,6 +47,29 @@
   button.refresh:active{transform:translateY(1px)}
   .updated{font-family:'DM Mono',monospace;font-size:11px;color:#bcd9e6}
 
+  /* Live-Messwerte: optisch abgesetzt von den Prognosekarten, damit auf einen
+     Blick klar ist, was gemessen und was gerechnet ist */
+  .live{
+    background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);
+    border-radius:14px;padding:12px 14px;margin-bottom:12px;color:#e8f3f1
+  }
+  .live .lab{
+    font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:#9fd3e8;margin-bottom:8px;
+    display:flex;justify-content:space-between;align-items:baseline;gap:8px
+  }
+  .live .lab .src{letter-spacing:.04em;text-transform:none;color:#7fa8bd;font-size:9px}
+  .live-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:3px 0}
+  .live-row .st{font-size:13px}
+  .live-row .kn{font-family:'DM Mono',monospace;font-size:17px;font-weight:500}
+  .live-row .kn small{font-size:11px;color:#bcd9e6;font-weight:400}
+  .live-row .meta{font-family:'DM Mono',monospace;font-size:10.5px;color:#bcd9e6}
+  .live-row.alt{opacity:.5}
+  .live-row.alt .meta::after{content:" · veraltet"}
+  .live .q-auf{color:#7ee3b4;font-weight:600}
+  .live .q-ab{color:#ff9d85;font-weight:600}
+  .live .q-seit{color:#bcd9e6}
+
   .cards{display:flex;flex-direction:column;gap:12px}
   .card{
     background:linear-gradient(180deg,#fbf4e6 0%,#f6ecd8 100%);
@@ -232,8 +255,13 @@ async function fetchAll(){
     + "&hourly=wave_height,wave_period,wave_direction"
     + `&models=${WAVE_MODELS.map(m=>m.id).join(",")}`
     + `&forecast_days=${FORECAST_DAYS}&timezone=${encodeURIComponent(TZ)}`;
-  const [wind, wave] = await Promise.all([getJSON(windUrl), getJSON(waveUrl)]);
-  return {wind, wave};
+  // Gemessene Werte aus dem eigenen Repo (ein GitHub-Actions-Job legt sie dort ab).
+  // AVAMET direkt abzufragen geht nicht – die Seite schickt keine CORS-Header.
+  // Fehlt die Datei oder ist sie kaputt, läuft die Prognose ohne sie weiter.
+  const obs = getJSON("data/observations.json?t=" + Date.now()).catch(() => null);
+
+  const [wind, wave, live] = await Promise.all([getJSON(windUrl), getJSON(waveUrl), obs]);
+  return {wind, wave, live};
 }
 
 // ---------- Aggregation ----------
@@ -366,11 +394,29 @@ function dayLabel(dateStr, idx){
   return new Date(dateStr+"T12:00:00").toLocaleDateString("de-DE",{weekday:"long"});
 }
 
-function render(days){
+// Gemessene Werte über den Prognosekarten. Bewusst getrennt dargestellt:
+// gemessen ist etwas anderes als gerechnet.
+function renderLive(live){
+  if (!live || !Array.isArray(live.stationen) || !live.stationen.length) return "";
+  const rows = live.stationen.map(s => {
+    const q = windQuality(s.grad);
+    const zeit = (s.gemessen || "").slice(11,16);
+    return `<div class="live-row${s.veraltet ? " alt" : ""}">`
+      + `<span class="st">${s.name}</span>`
+      + `<span class="meta">${dirArrow(s.grad)} ${s.richtung || "?"} `
+      + `<span class="${q.cls}">${q.label}</span> · ${zeit}</span>`
+      + `<span class="kn">${s.kn} <small>kn</small></span></div>`;
+  }).join("");
+  return `<div class="live">`
+    + `<div class="lab"><span>Jetzt gemessen</span><span class="src">${live.quelle || ""}</span></div>`
+    + rows + `</div>`;
+}
+
+function render(days, live){
   const fmt1 = v => v==null ? "–" : v.toFixed(1);
   const fmt0 = v => v==null ? "–" : Math.round(v).toString();
 
-  let html = '<div class="cards">';
+  let html = renderLive(live) + '<div class="cards">';
   days.forEach((d, idx) => {
     const dateStr = new Date(d.date+"T12:00:00")
       .toLocaleDateString("de-DE",{day:"2-digit",month:"long"});
@@ -448,7 +494,7 @@ async function load(){
   try{
     const data = await fetchAll();
     const days = aggregate(data);
-    render(days);
+    render(days, data.live);
     lastLoaded = Date.now();
     document.getElementById("updated").textContent =
       "Stand: " + new Date().toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
@@ -463,8 +509,9 @@ async function load(){
       + `Fensterende ${SESSION_WEEKDAY[1]} Uhr: danach ist Sonnenuntergang – und AROME reicht am dritten Tag genau bis dahin. `
       + "Grün = auflandig (Wind vom Meer, drückt an Land). "
       + "Rot = ablandig (drückt aufs offene Meer – Vorsicht!). "
-      + "Daten: Open-Meteo (CC-BY 4.0). Auch 1,5 km bleibt ein Modell – "
-      + "kein Ersatz für den Blick aufs Meer.";
+      + "Prognose: Open-Meteo (CC-BY 4.0). Messwerte: AVAMET (CC BY-NC-ND 4.0), "
+      + "Stationen Cullera Faro und San Antonio, alle 30 Minuten abgeholt. "
+      + "Auch 1,5 km bleibt ein Modell – kein Ersatz für den Blick aufs Meer.";
   }catch(e){
     document.getElementById("content").innerHTML =
       `<div class="state">Vorhersage konnte nicht geladen werden.<br>(${e.message})<br><br>Internetverbindung prüfen und oben aktualisieren.</div>`;

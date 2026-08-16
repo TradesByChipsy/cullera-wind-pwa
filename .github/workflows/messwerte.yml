@@ -1,0 +1,53 @@
+name: Messwerte Cullera abholen
+
+# Holt die Windmesswerte der beiden AVAMET-Stationen in Cullera und legt sie als
+# data/observations.json ins Repo. Die PWA kann AVAMET nicht direkt abrufen –
+# es fehlen die CORS-Header. Über den Umweg Repo liest sie die Daten von der
+# eigenen Domain.
+
+on:
+  schedule:
+    # Alle 30 Minuten während der Tagstunden in Cullera (05–19 UTC = 07–21 Ortszeit
+    # im Sommer). Nachts misst niemand Seebrise.
+    - cron: "0,30 5-19 * * *"
+  workflow_dispatch:
+
+# Der Job schreibt observations.json und messreihe.csv zurück ins Repo.
+permissions:
+  contents: write
+
+# Zwei gleichzeitige Läufe würden sich beim Push gegenseitig abschießen.
+concurrency:
+  group: messwerte
+  cancel-in-progress: false
+
+jobs:
+  messwerte:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Keine Abhängigkeiten nötig – das Skript nutzt nur die Standardbibliothek.
+      - name: Messwerte abrufen
+        run: python scripts/messwerte.py
+
+      - name: Änderungen committen
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          # Ohne Änderung nicht committen, sonst entsteht alle 30 Minuten ein
+          # leerer Commit.
+          if git diff --staged --quiet; then
+            echo "Keine neuen Messwerte."
+          else
+            git commit -m "Messwerte $(date -u '+%Y-%m-%d %H:%M UTC')"
+            # Wurde zwischenzeitlich von Hand gepusht, würde der Push sonst
+            # abgelehnt und der Lauf schlüge fehl.
+            git pull --rebase --autostash origin master
+            git push
+          fi

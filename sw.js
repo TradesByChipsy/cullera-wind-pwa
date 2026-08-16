@@ -1,6 +1,6 @@
 // Service Worker: App-Shell-Cache für Offline-Start.
 // Wetterdaten (api.open-meteo.com) werden NIE gecacht – immer live.
-const VERSION = "v4";
+const VERSION = "v5";
 const SHELL = [
   "./",
   "index.html",
@@ -45,6 +45,24 @@ self.addEventListener("fetch", (e) => {
           return r;
         })
         .catch(() => caches.match("index.html"))
+    );
+    return;
+  }
+
+  // Messwerte: network-first. Cache-first würde hier dauerhaft eine alte
+  // Messung ausliefern und die ganze Live-Anzeige wertlos machen. Der Cache
+  // dient nur als Offline-Rückfall – die Anzeige weist Alter selbst aus.
+  if (url.pathname.includes("/data/")) {
+    e.respondWith(
+      fetch(e.request)
+        .then((r) => {
+          if (r.ok) {
+            const copy = r.clone();
+            caches.open(VERSION).then((c) => c.put(e.request, copy));
+          }
+          return r;
+        })
+        .catch(() => caches.match(e.request))
     );
     return;
   }
