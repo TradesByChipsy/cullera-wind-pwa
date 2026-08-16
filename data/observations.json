@@ -1,5 +1,5 @@
 {
- "stand": "2026-08-16T09:20+02:00",
+ "stand": "2026-08-16T09:24+02:00",
  "quelle": "AVAMET (CC BY-NC-ND 4.0)",
  "stationen": [
   {
@@ -12,10 +12,10 @@
   },
   {
    "name": "Cullera San Antonio",
-   "kn": 5,
-   "grad": 355,
-   "richtung": "N",
-   "gemessen": "2026-08-16T09:10+02:00",
+   "kn": 6,
+   "grad": 250,
+   "richtung": "WSW",
+   "gemessen": "2026-08-16T09:15+02:00",
    "veraltet": false
   }
  ]
