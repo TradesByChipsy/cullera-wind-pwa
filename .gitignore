@@ -1,0 +1,3 @@
+# Python-Bytecode des Sammelskripts – gehört nicht ins Repo
+__pycache__/
+*.pyc

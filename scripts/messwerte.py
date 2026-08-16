@@ -161,21 +161,36 @@ def main():
     with open(OBS_PATH, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=1)
         f.write("\n")
+    print(f"geschrieben: {OBS_PATH}")
 
-    # Messreihe fortschreiben – Grundlage für die spätere Bias-Auswertung
+    # Messreihe fortschreiben – Grundlage für die spätere Bias-Auswertung.
+    # Der Job läuft alle 30 Min, die Stationen liefern alle 5–15 Min. Hat eine
+    # Station seit dem letzten Lauf nichts Neues geschickt (Ausfall, Sensor hängt),
+    # käme dieselbe Messung ein zweites Mal in die Datei und stagnante Phasen
+    # bekämen im Mittel doppeltes Gewicht. Deshalb nach (Zeit, Station) entdoppeln.
+    bekannt = set()
+    if os.path.exists(CSV_PATH):
+        with open(CSV_PATH, encoding="utf-8", newline="") as f:
+            for row in csv.reader(f):
+                if len(row) >= 2:
+                    bekannt.add((row[0], row[1]))
+
+    neu = [s for s in stations
+           if not s["veraltet"] and (s["gemessen"], s["name"]) not in bekannt]
+
+    if not neu:
+        print("Keine neue Messung seit dem letzten Lauf – Messreihe unverändert.")
+        return 0
+
     arome = arome_now()
-    new = not os.path.exists(CSV_PATH)
     with open(CSV_PATH, "a", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
-        if new:
+        if not bekannt:
             w.writerow(["zeit", "station", "gemessen_kn", "grad", "arome_kn"])
-        for s in stations:
-            if s["veraltet"]:
-                continue  # veraltete Messung nicht in die Auswertung schleppen
+        for s in neu:
             w.writerow([s["gemessen"], s["name"], s["kn"], s["grad"],
                         "" if arome is None else round(arome, 1)])
-
-    print(f"\ngeschrieben: {OBS_PATH}")
+    print(f"Messreihe: {len(neu)} neue Zeile(n)")
     return 0
 
 
