@@ -1,6 +1,6 @@
 // Service Worker: App-Shell-Cache für Offline-Start.
 // Wetterdaten (api.open-meteo.com) werden NIE gecacht – immer live.
-const VERSION = "v5";
+const VERSION = "v6";
 const SHELL = [
   "./",
   "index.html",
@@ -53,16 +53,22 @@ self.addEventListener("fetch", (e) => {
   // Messung ausliefern und die ganze Live-Anzeige wertlos machen. Der Cache
   // dient nur als Offline-Rückfall – die Anzeige weist Alter selbst aus.
   if (url.pathname.includes("/data/")) {
+    // Die App hängt einen Cache-Buster an (?t=…), damit auch ohne aktiven
+    // Service Worker nichts Altes aus dem HTTP-Cache kommt (Pages liefert
+    // max-age=600). Als Cache-Schlüssel muss die Query aber weg: sonst legt
+    // jeder Abruf einen neuen Eintrag an, der Cache wächst unbegrenzt und der
+    // Offline-Rückfall trifft nie den zuletzt gespeicherten Stand.
+    const key = url.origin + url.pathname;
     e.respondWith(
       fetch(e.request)
         .then((r) => {
           if (r.ok) {
             const copy = r.clone();
-            caches.open(VERSION).then((c) => c.put(e.request, copy));
+            caches.open(VERSION).then((c) => c.put(key, copy));
           }
           return r;
         })
-        .catch(() => caches.match(e.request))
+        .catch(() => caches.match(key))
     );
     return;
   }
