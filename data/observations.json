@@ -1,13 +1,13 @@
 {
- "stand": "2026-08-22T12:54+02:00",
+ "stand": "2026-08-22T13:25+02:00",
  "quelle": "AVAMET (CC BY-NC-ND 4.0)",
  "stationen": [
   {
    "name": "Cullera Faro",
-   "kn": 7,
-   "grad": 49,
-   "richtung": "NO",
-   "gemessen": "2026-08-22T12:40+02:00",
+   "kn": 8,
+   "grad": 66,
+   "richtung": "ONO",
+   "gemessen": "2026-08-22T13:10+02:00",
    "veraltet": false
   },
   {
@@ -15,7 +15,7 @@
    "kn": 7,
    "grad": 88,
    "richtung": "O",
-   "gemessen": "2026-08-22T12:50+02:00",
+   "gemessen": "2026-08-22T13:20+02:00",
    "veraltet": false
   }
  ]
