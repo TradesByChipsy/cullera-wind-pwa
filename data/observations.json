@@ -1,21 +1,21 @@
 {
- "stand": "2026-08-27T18:18+02:00",
+ "stand": "2026-08-28T03:04+02:00",
  "quelle": "AVAMET (CC BY-NC-ND 4.0)",
  "stationen": [
   {
    "name": "Cullera Faro",
-   "kn": 9,
-   "grad": 117,
-   "richtung": "OSO",
-   "gemessen": "2026-08-27T18:10+02:00",
+   "kn": 16,
+   "grad": 287,
+   "richtung": "WNW",
+   "gemessen": "2026-08-28T03:00+02:00",
    "veraltet": false
   },
   {
    "name": "Cullera San Antonio",
-   "kn": 3,
-   "grad": 163,
-   "richtung": "SSO",
-   "gemessen": "2026-08-27T18:11+02:00",
+   "kn": 6,
+   "grad": 283,
+   "richtung": "WNW",
+   "gemessen": "2026-08-28T02:55+02:00",
    "veraltet": false
   }
  ]
