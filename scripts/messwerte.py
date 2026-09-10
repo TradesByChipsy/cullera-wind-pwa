@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Holt die aktuellen Windmesswerte der beiden AVAMET-Stationen in Cullera und legt
+Holt die aktuellen Windmesswerte der drei AVAMET-Stationen in Cullera und legt
 sie als data/observations.json ab, damit die PWA sie von der eigenen Domain lesen
 kann. AVAMET selbst schickt keine CORS-Header – ein direkter Abruf aus dem Browser
 ist deshalb nicht möglich.
 
 Zusätzlich wird jede Messung zusammen mit dem, was AROME für dieselbe Stunde
-vorhergesagt hat, an data/messreihe.csv angehängt. Daraus lässt sich nach ein paar
-Wochen bestimmen, ob AROME für Cullera systematisch daneben liegt.
+vorhergesagt hat, an data/messreihe.csv angehängt. Die App liest diese Datei und
+korrigiert damit die angezeigte Prognose – siehe Bias-Korrektur in index.html.
 
 Datenquelle: AVAMET (Associació Valenciana de Meteorologia), CC BY-NC-ND 4.0.
 """
@@ -24,7 +24,13 @@ from zoneinfo import ZoneInfo
 TZ = ZoneInfo("Europe/Madrid")
 LAT, LON = 39.169, -0.229
 
+# Marenyet steht zuerst: Das ist der Strand, um den es geht, und damit die
+# Referenz für die Bias-Korrektur. Faro und San Antonio liegen beide AUF bzw.
+# NÖRDLICH des Kaps – bei nördlichen und östlichen Lagen ist das eine andere
+# Windwelt als südlich davon. Momentaufnahme 10.09.2026, 15:30 Uhr:
+# Faro 7,0 kn, Marenyet 5,2 kn, San Antonio 3,5 kn.
 STATIONS = [
+    ("c21m105e07", "Cullera Marenyet"),
     ("c21m105e06", "Cullera Faro"),
     ("c21m105e03", "Cullera San Antonio"),
 ]

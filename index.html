@@ -89,6 +89,7 @@
   .stat .sub{font-size:12px;color:var(--mute);margin-top:3px}
   .stat .sub b{color:var(--ink);font-weight:600}
   .stat .val small.at{font-size:12px;color:var(--mute);font-weight:400;letter-spacing:0}
+  .stat .sub.bias{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--coral-deep);margin-top:4px;line-height:1.45}
   .stat .sub.spread{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--mute);margin-top:4px}
   .stat .sub.spread-warn{color:var(--coral-deep);font-weight:500}
   .dir-arrow{display:inline-block;font-size:14px;line-height:1}
@@ -177,11 +178,21 @@ function sessionWindow(dateStr){
 // Reihenfolge = Priorität. Das erste Modell mit Daten für den Tag führt,
 // der Rest dient nur als Streuungs-/Vertrauensangabe.
 // AROME reicht ~69 h, danach übernehmen die gröberen Modelle automatisch.
-// Bewusst NICHT dabei: ECMWF IFS 0.25° – rastet auf 39,0/-0,25 ein und misst
-// damit rund 19 km südlich von Cullera, konstant zu niedrig.
+//
+// Ab Platz 3 entscheidet nicht mehr die Auflösung allein: ECMWF IFS ist mit 9 km
+// gröber als ICON-EU mit 7 km, steht aber davor, weil es ab Tag 2 durchweg besser
+// verifiziert und sein Gitterpunkt mit 3,0 km praktisch gleich nah liegt
+// (ICON-EU: 2,6 km). Sobald die Messreihe genug Tag-3-Paare hat, lässt sich das
+// nachprüfen statt annehmen.
+//
+// Bewusst NICHT dabei: ECMWF IFS 0.25° und AIFS 0.25° – beide rasten auf
+// 39,0/-0,25 ein, also 18,4 km südlich. Das gilt NICHT mehr für ecmwf_ifs:
+// seit ECMWF am 1.10.2025 den vollen Katalog geöffnet hat, gibt es HRES nativ
+// in 9 km, und damit rückt der Gitterpunkt auf 3,0 km heran.
 const WIND_MODELS = [
   {id:"meteofrance_arome_france_hd",    name:"AROME HD",      res:"1,5 km"},
   {id:"meteofrance_arome_france",       name:"AROME",         res:"2,5 km"},
+  {id:"ecmwf_ifs",                      name:"ECMWF IFS",     res:"9 km"},
   {id:"icon_eu",                        name:"ICON-EU · DWD", res:"7 km"},
   {id:"ukmo_global_deterministic_10km", name:"UK Met Office", res:"10 km"},
   {id:"meteofrance_arpege_europe",      name:"ARPEGE",        res:"11 km"},
@@ -196,6 +207,28 @@ const WAVE_MODELS = [
   {id:"gwam",             name:"GWAM",      res:"25 km"},
 ];
 
+// Bias-Korrektur aus der eigenen Messreihe.
+// Auswertung vom 10.09.2026 über 460 Messpaare seit dem 16.08.: AROME HD liegt
+// im Nachmittagsfenster nicht zu niedrig, sondern systematisch ZU HOCH – am Faro
+// um 3,4 kn, an San Antonio um 5,1 kn. Der Fehler ist tageszeitabhängig: morgens
+// nahe null, ab 14 Uhr kippend, abends bis −5 kn. Das ist mehr, als ein
+// Modellwechsel je ausmacht, also wird es korrigiert statt ignoriert.
+// Die Korrektur wird bei jedem Laden neu aus der CSV gerechnet und wird damit
+// von allein besser, je länger der Job läuft.
+const BIAS_MODEL_ID   = "meteofrance_arome_france_hd"; // nur dieses Modell wurde vermessen
+const BIAS_MIN_HOUR   = 8;   // weniger Paare in einer Stunde = zu zufällig
+const BIAS_MIN_TOTAL  = 30;  // Mindestumfang, damit eine Station überhaupt Referenz wird
+const BIAS_CAP        = 8;   // kn – Deckel gegen hängende Sensoren und Ausreißer
+// Referenzstation: NUR Marenyet – dort wird gefoilt, dorthin muss die Zahl passen.
+// Faro als Übergangslösung wurde verworfen: Die beiden Stationen verhalten sich
+// nicht proportional zueinander. Am 10.09. maß der Faro um 15:30 Uhr 7,0 kn gegen
+// 5,2 kn am Marenyet, um 16:50 Uhr aber nur noch 4,0 gegen 10,0 kn. Eine an Faro
+// geeichte Korrektur hätte an diesem Nachmittag rund 4 kn angezeigt, während am
+// Strand 10 kn standen – genau der Fehler vom 15.08., nur mit neuer Mechanik.
+// Bis Marenyet genug Paare gesammelt hat (BIAS_MIN_TOTAL), zeigt die App den
+// Rohwert wie bisher. Die Korrektur schaltet sich dann von selbst zu.
+const BIAS_STATIONS = ["Cullera Marenyet"];
+
 let lastLoaded = 0;
 
 // ---------- Mathe-Helfer ----------
@@ -209,6 +242,11 @@ const circMean = degs => {
   let x=0, y=0;
   s.forEach(d => { const r = d*Math.PI/180; x += Math.cos(r); y += Math.sin(r); });
   return ((Math.atan2(y,x)*180/Math.PI)+360)%360;
+};
+const median = a => {
+  if (!a.length) return null;
+  const s = [...a].sort((x,y)=>x-y), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
 };
 const dirName = d => {
   if (d == null) return "?";
@@ -243,6 +281,48 @@ function seriesFor(hourly, base, modelId, modelCount){
   return hourly[`${base}_${modelId}`] || null;
 }
 
+// ---------- Bias aus data/messreihe.csv ----------
+// Spalten: zeit,station,gemessen_kn,grad,arome_kn
+// Der Median statt des Mittels ist Absicht: eine einzelne hängende Böe oder ein
+// Sensoraussetzer würde ein Mittel über acht Werte spürbar verziehen.
+function buildBias(text){
+  if (!text) return null;
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return null;
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++){
+    const c = lines[i].split(",");
+    if (c.length < 5) continue;
+    const gemessen = parseFloat(c[2]), prognose = parseFloat(c[4]);
+    if (!isFinite(gemessen) || !isFinite(prognose)) continue;
+    rows.push({hour: +c[0].slice(11,13), station: c[1], diff: gemessen - prognose});
+  }
+  if (!rows.length) return null;
+
+  const station = BIAS_STATIONS.find(
+    n => rows.reduce((k,r) => k + (r.station === n ? 1 : 0), 0) >= BIAS_MIN_TOTAL);
+  if (!station) return null;
+
+  const mine = rows.filter(r => r.station === station);
+  const cap = v => v == null ? null : Math.max(-BIAS_CAP, Math.min(BIAS_CAP, v));
+
+  const byHour = {};
+  mine.forEach(r => { (byHour[r.hour] = byHour[r.hour] || []).push(r.diff); });
+  const perHour = {};
+  Object.keys(byHour).forEach(h => {
+    if (byHour[h].length >= BIAS_MIN_HOUR) perHour[h] = cap(median(byHour[h]));
+  });
+
+  // Stunden ohne eigene Stichprobe bekommen den Gesamtmedian – besser als gar
+  // keine Korrektur, aber sichtbar gröber.
+  const fallback = cap(median(mine.map(r => r.diff)));
+  return {
+    station, n: mine.length, perHour, fallback,
+    delta: h => perHour[h] != null ? perHour[h] : fallback,
+  };
+}
+
 async function fetchAll(){
   const windUrl = "https://api.open-meteo.com/v1/forecast"
     + `?latitude=${LAT}&longitude=${LON}`
@@ -259,9 +339,14 @@ async function fetchAll(){
   // AVAMET direkt abzufragen geht nicht – die Seite schickt keine CORS-Header.
   // Fehlt die Datei oder ist sie kaputt, läuft die Prognose ohne sie weiter.
   const obs = getJSON("data/observations.json?t=" + Date.now()).catch(() => null);
+  // Messreihe für die Bias-Korrektur. Fehlt sie oder ist sie noch zu kurz,
+  // zeigt die App eben den Rohwert – nie ein Grund, den Ladevorgang abzubrechen.
+  const reihe = fetch("data/messreihe.csv?t=" + Date.now())
+    .then(r => r.ok ? r.text() : null).catch(() => null);
 
-  const [wind, wave, live] = await Promise.all([getJSON(windUrl), getJSON(waveUrl), obs]);
-  return {wind, wave, live};
+  const [wind, wave, live, csv] = await Promise.all(
+    [getJSON(windUrl), getJSON(waveUrl), obs, reihe]);
+  return {wind, wave, live, bias: buildBias(csv)};
 }
 
 // ---------- Aggregation ----------
@@ -275,7 +360,7 @@ function windowIdx(times, dateStr, h0, h1){
   return idx;
 }
 
-function aggregate({wind, wave}){
+function aggregate({wind, wave, bias}){
   const wTimes = wind.hourly.time;
   const vTimes = wave.hourly.time;
 
@@ -319,6 +404,42 @@ function aggregate({wind, wave}){
     // Leitmodell = feinste Auflösung, die das Fenster lückenlos abdeckt
     const lead = perSource.find(s => s.complete) || perSource[0] || null;
 
+    const leadSp = lead ? seriesFor(wind.hourly, "wind_speed_10m",     lead.id, WIND_MODELS.length) : null;
+    const leadGu = lead ? seriesFor(wind.hourly, "wind_gusts_10m",     lead.id, WIND_MODELS.length) : null;
+    const leadDr = lead ? seriesFor(wind.hourly, "wind_direction_10m", lead.id, WIND_MODELS.length) : null;
+
+    // Bias-Korrektur greift nur beim Modell, gegen das gemessen wurde. Eine an
+    // AROME HD bestimmte Abweichung sagt nichts über ECMWF oder ICON-EU – sie
+    // dort anzuwenden wäre geraten, nicht gemessen.
+    const corr = (bias && lead && lead.id === BIAS_MODEL_ID) ? bias : null;
+    const adj = (v, h) => (corr && v != null) ? Math.max(0, v + corr.delta(h)) : v;
+
+    // Die Spitze wird nach der Korrektur neu gesucht, nicht nachträglich
+    // verschoben: Weil der Bias über den Tag wandert, kann die Spitzenstunde
+    // eine andere sein als im Rohlauf.
+    let peak = lead ? lead.peak : null;
+    let peakHour = lead ? lead.peakHour : null;
+    let peakDir = lead ? lead.peakDir : null;
+    let windAvg = lead ? lead.avg : null;
+    let gustMax = lead ? lead.gustMax : null;
+    const peakRaw = lead ? lead.peak : null;
+    if (corr && leadGu){
+      const g = wi.map(i => adj(leadGu[i], +wTimes[i].slice(11,13))).filter(v => v != null);
+      if (g.length) gustMax = Math.max(...g);
+    }
+    if (corr && leadSp){
+      const vals = wi
+        .map(i => ({i, h: +wTimes[i].slice(11,13), v: adj(leadSp[i], +wTimes[i].slice(11,13))}))
+        .filter(x => x.v != null);
+      if (vals.length){
+        const best = vals.reduce((a,b) => b.v > a.v ? b : a);
+        peak = best.v;
+        peakHour = best.h;
+        peakDir = leadDr ? leadDr[best.i] : null;
+        windAvg = mean(vals.map(x => x.v));
+      }
+    }
+
     // Welle pro Quelle: Ø Höhe/Periode im Fenster
     const waveSources = WAVE_MODELS.map(m => {
       const wh = seriesFor(wave.hourly, "wave_height", m.id, WAVE_MODELS.length);
@@ -340,9 +461,6 @@ function aggregate({wind, wave}){
 
     // Stundenleiste 8–21 Uhr: Werte des Leitmodells (nicht gemittelt),
     // Session-Fenster-Stunden werden markiert (hl)
-    const leadSp  = lead ? seriesFor(wind.hourly, "wind_speed_10m",     lead.id, WIND_MODELS.length) : null;
-    const leadGu  = lead ? seriesFor(wind.hourly, "wind_gusts_10m",     lead.id, WIND_MODELS.length) : null;
-    const leadDr  = lead ? seriesFor(wind.hourly, "wind_direction_10m", lead.id, WIND_MODELS.length) : null;
     const leadWh  = waveLead ? seriesFor(wave.hourly, "wave_height", waveLead.id, WAVE_MODELS.length) : null;
 
     const stripIdx = windowIdx(wTimes, d, STRIP_START, STRIP_END);
@@ -352,10 +470,19 @@ function aggregate({wind, wave}){
       const vIdx = vTimes.indexOf(t);
       // hl nur, wenn das Fenster enger als die Leiste ist (Mo–Fr)
       const hl = s0 > STRIP_START && h >= s0 && h <= s1;
+      // Die Böe wird um denselben Betrag mitverschoben. Gemessen wurde nur der
+      // mittlere Wind, deshalb bleibt der Böenaufschlag des Modells (Böe minus
+      // Wind) unangetastet und nur das Grundniveau wandert – die schwächere der
+      // beiden möglichen Annahmen. Ohne das stünde in der Leiste "Wind 1 kn,
+      // Böen 14 kn" nebeneinander.
+      const wCorr = leadSp ? adj(leadSp[i], h) : null;
+      const gCorr = (leadGu && leadGu[i] != null)
+        ? Math.max(wCorr != null ? wCorr : 0, adj(leadGu[i], h))
+        : null;
       return {
         t, hl,
-        wind: leadSp ? leadSp[i] : null,
-        gust: leadGu ? leadGu[i] : null,
+        wind: wCorr,
+        gust: gCorr,
         dir:  leadDr ? leadDr[i] : null,
         wave: (leadWh && vIdx >= 0) ? leadWh[vIdx] : null,
       };
@@ -369,11 +496,16 @@ function aggregate({wind, wave}){
       winStart: s0, winEnd: s1,
       leadName: lead ? lead.name : null,
       leadRes:  lead ? lead.res  : null,
-      windPeak: lead ? lead.peak : null,
-      peakHour: lead ? lead.peakHour : null,
-      windAvg:  lead ? lead.avg : null,
-      gustMax:  lead ? lead.gustMax : null,
-      windDir:  lead ? lead.peakDir : null,
+      windPeak: peak,
+      peakHour,
+      windAvg,
+      gustMax,
+      windDir:  peakDir,
+      // Korrektur-Herkunft, damit die Karte offenlegt, woher die Zahl kommt
+      peakRaw:      corr ? peakRaw : null,
+      biasDelta:    (corr && peakHour != null) ? corr.delta(peakHour) : null,
+      biasStation:  corr ? corr.station : null,
+      biasN:        corr ? corr.n : null,
       spreadMin: peaks.length ? Math.min(...peaks) : null,
       spreadMax: peaks.length ? Math.max(...peaks) : null,
       perSource,
@@ -415,6 +547,7 @@ function renderLive(live){
 function render(days, live){
   const fmt1 = v => v==null ? "–" : v.toFixed(1);
   const fmt0 = v => v==null ? "–" : Math.round(v).toString();
+  const fmtSigned = v => v==null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(1);
 
   let html = renderLive(live) + '<div class="cards">';
   days.forEach((d, idx) => {
@@ -456,7 +589,8 @@ function render(days, live){
             d.peakHour != null ? ` <small class="at">um ${String(d.peakHour).padStart(2,"0")} Uhr</small>` : ""}</div>
           <div class="sub">${dirArrow(d.windDir)} aus <b>${dirName(d.windDir)}</b> · <span class="${windQuality(d.windDir).cls}">${windQuality(d.windDir).label}</span></div>
           <div class="sub">Böen <b>${fmt0(d.gustMax)} kn</b> · Ø Fenster ${fmt0(d.windAvg)} kn</div>
-          <div class="sub spread${spreadWarn ? " spread-warn" : ""}">Modelle ${fmt0(d.spreadMin)}–${fmt0(d.spreadMax)} kn${
+          ${d.biasDelta != null ? `<div class="sub bias">korrigiert ${fmtSigned(d.biasDelta)} kn · Modell roh ${fmt0(d.peakRaw)} kn<br>aus ${d.biasN} Messungen · ${d.biasStation}</div>` : ""}
+          <div class="sub spread${spreadWarn ? " spread-warn" : ""}">Modelle ${d.biasDelta != null ? "roh " : ""}${fmt0(d.spreadMin)}–${fmt0(d.spreadMax)} kn${
             spreadWarn ? " · unsicher" : ""}</div>
         </div>
         <div class="stat">
@@ -473,7 +607,7 @@ function render(days, live){
         <div class="strip"><table class="hours">${stripRows}</table></div>
       </div>
       <div class="sources">
-        <div class="lab">Spitze je Quelle · Leitmodell zuerst</div>
+        <div class="lab">Spitze je Quelle · roh, unkorrigiert</div>
         ${srcRows}
       </div>
     </div>`;
@@ -501,8 +635,20 @@ async function load(){
     const lead = days[0] ? days[0].leadName : "–";
     const leadRes = days[0] ? days[0].leadRes : "";
     const nWind = days[0] ? days[0].perSource.length : 0;
+    const bias = days.find(d => d.biasDelta != null);
     document.getElementById("foot").textContent =
-      `Alle Zahlen stammen vom Leitmodell (heute ${lead}, ${leadRes}) – nicht gemittelt. `
+      (bias
+        ? `Die große Zahl ist am Standort nachkalibriert: Aus ${bias.biasN} eigenen Messpaaren `
+          + `(${bias.biasStation}) wird je Tagesstunde bestimmt, wie weit AROME HD danebenliegt, `
+          + `und der Modellwert entsprechend verschoben. Die Auswertung im September 2026 ergab: `
+          + `nachmittags rechnet das Modell 3–5 kn ZU HOCH, nicht zu niedrig. Die Böe wandert um `
+          + `denselben Betrag mit, ihr Aufschlag über den Wind bleibt also der des Modells. `
+          + `Korrigiert wird nur, solange AROME HD führt: Die Abweichung wurde gegen dieses eine `
+          + `Modell gemessen und sagt nichts über ECMWF oder ICON-EU. Deshalb steht in der `
+          + `Quellenliste weiter der Rohwert. Die Korrektur wird von allein besser, je länger der `
+          + `Job mitschreibt. `
+        : "")
+      + `Alle Zahlen stammen vom Leitmodell (heute ${lead}, ${leadRes}) – nicht gemittelt. `
       + `Die ${nWind} Quellen werden nur zur Streuung ausgewiesen: liegen sie weit auseinander, ist die Prognose unsicher. `
       + `Spitze = höchster Stundenwert im Fenster (Mo–Fr ${SESSION_WEEKDAY[0]}–${SESSION_WEEKDAY[1]} Uhr, `
       + `Sa/So ${SESSION_WEEKEND[0]}–${SESSION_WEEKEND[1]} Uhr), weil ein Tagesmittel die Nachmittagsthermik wegrechnet. `
@@ -510,7 +656,7 @@ async function load(){
       + "Grün = auflandig (Wind vom Meer, drückt an Land). "
       + "Rot = ablandig (drückt aufs offene Meer – Vorsicht!). "
       + "Prognose: Open-Meteo (CC-BY 4.0). Messwerte: AVAMET (CC BY-NC-ND 4.0), "
-      + "Stationen Cullera Faro und San Antonio, alle 30 Minuten abgeholt. "
+      + "Stationen Cullera Marenyet, Faro und San Antonio, alle 30 Minuten abgeholt. "
       + "Auch 1,5 km bleibt ein Modell – kein Ersatz für den Blick aufs Meer.";
   }catch(e){
     document.getElementById("content").innerHTML =
