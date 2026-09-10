@@ -90,6 +90,40 @@
   .stat .sub b{color:var(--ink);font-weight:600}
   .stat .val small.at{font-size:12px;color:var(--mute);font-weight:400;letter-spacing:0}
   .stat .sub.bias{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--coral-deep);margin-top:4px;line-height:1.45}
+  /* Wahrscheinlichkeit aus dem Ensemble – als Balken, weil "68 %" als Zahl
+     allein nicht schneller lesbar ist als die Windspitze darüber. */
+  .chance{margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+  .chance-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px;color:var(--mute)}
+  .chance-head b{font-family:'DM Mono',monospace;font-size:15px;color:var(--ink);font-weight:600}
+  .chance-bar{height:5px;border-radius:3px;background:var(--line);margin-top:5px;overflow:hidden}
+  .chance-bar i{display:block;height:100%;border-radius:3px;background:var(--gold)}
+  .chance-sub{font-family:'DM Mono',monospace;font-size:10px;color:var(--mute);margin-top:4px;line-height:1.5}
+  .srow-aemet{margin-top:5px;padding-top:7px;border-top:1px solid var(--line)}
+  .zweit-tag{font-family:'DM Mono',monospace;font-size:9.5px;color:var(--mute);
+    border:1px solid var(--line);border-radius:3px;padding:1px 4px;white-space:nowrap}
+  .nowcast{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+    border-radius:14px;padding:12px 14px;margin-bottom:14px}
+  .nowcast .lab{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.6);margin-bottom:8px}
+  .nowcast .src{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0;text-transform:none}
+  /* Die Stundentabelle ist für die hellen Tageskarten gebaut. Auf dem dunklen
+     Nowcast-Panel muss jede Farbregel einzeln überschrieben werden – die
+     Kartenregeln sind spezifischer als ein bloßes color am Tabellenelement. */
+  .nowcast .strip{background:transparent;margin:0}
+  .nowcast table.hours th,.nowcast table.hours td{color:#dcecf4}
+  .nowcast table.hours tr:first-child th{color:#9fd3e8;border-bottom-color:rgba(255,255,255,.16)}
+  .nowcast table.hours td b{color:#fff;font-weight:600}
+  .nowcast table.hours th.rowlab{
+    background:#0d3f63;color:#9fd3e8;
+    box-shadow:2px 0 5px -2px rgba(0,0,0,.45)
+  }
+  .nowcast table.hours .hl{background:rgba(242,169,0,.26)}
+  .nowcast table.hours tr:first-child th.hl{color:var(--gold);font-weight:600}
+  /* Auflandig/ablandig in den hellen Tönen des Messpanels, nicht in den
+     Kartenfarben – die sind für weißen Grund gemischt. */
+  .nowcast .q-auf{color:#7ee3b4;font-weight:600}
+  .nowcast .q-ab{color:#ff9d85;font-weight:600}
+  .nowcast .q-seit{color:#bcd9e6}
   .stat .sub.spread{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--mute);margin-top:4px}
   .stat .sub.spread-warn{color:var(--coral-deep);font-weight:500}
   .dir-arrow{display:inline-block;font-size:14px;line-height:1}
@@ -155,7 +189,14 @@
 </div>
 
 <script>
-const LAT = 39.169, LON = -0.229, TZ = "Europe/Madrid";
+// Prognosepunkt = die AVAMET-Station el Marenyet (39°08'31" N, 00°14'20" W).
+// Bewusst genau dorthin gelegt, wo gemessen wird: Die Bias-Korrektur eicht den
+// Modellwert gegen diese Station, und das ist nur sinnvoll, wenn beide denselben
+// Ort meinen. AROME HD rastet damit auf 39,14/-0,24 ein – 0,2 km von der Station
+// entfernt statt 1,0 km beim früheren Punkt 39,169/-0,229.
+// Die Wellenmodelle liefern hier unverändert; EWAM rastet weiterhin auf
+// 39,15/-0,20 ein, jetzt 3,5 km statt 3,3 km entfernt.
+const LAT = 39.142, LON = -0.239, TZ = "Europe/Madrid";
 const FORECAST_DAYS = 5;
 // Fensterende 20 Uhr statt 21: Sonnenuntergang ist im August gegen 20:55, die
 // 21-Uhr-Stunde ist also ohnehin dunkel. Entscheidend ist aber der Nebeneffekt –
@@ -228,6 +269,27 @@ const BIAS_CAP        = 8;   // kn – Deckel gegen hängende Sensoren und Ausre
 // Bis Marenyet genug Paare gesammelt hat (BIAS_MIN_TOTAL), zeigt die App den
 // Rohwert wie bisher. Die Korrektur schaltet sich dann von selbst zu.
 const BIAS_STATIONS = ["Cullera Marenyet"];
+
+// Ensemble statt Einzelwert: ICON-EU-EPS rechnet denselben Tag 40-mal mit leicht
+// gestörten Startbedingungen. Aus der Streuung der 40 Läufe wird eine
+// Wahrscheinlichkeit — "70 % Chance auf 14 kn" ist für die Entscheidung, ob man
+// hinfährt, ehrlicher als eine einzelne Zahl mit zwei Nachkommastellen.
+// Gitterpunkt 2,1 km. Das ECMWF-Ensemble hätte 51 Mitglieder, sitzt aber auf
+// 39,0/-0,25 und damit 15,8 km südlich – für diesen Spot unbrauchbar.
+const ENSEMBLE_MODEL = "icon_eu";
+const WING_MIN = 14;   // kn – Schwelle aus dem früheren Dashboard: ab hier lohnt Wing-Foilen
+
+// Nowcast: AROME in 15-Minuten-Schritten, stündlich neu gerechnet, 6 Stunden
+// voraus. Genau das Fenster zwischen "nachmittags entscheiden" und "am Strand
+// stehen" — und der einzige Lauf hier, der schnell genug nachzieht, um die Brise
+// beim Einsetzen zu erwischen.
+// Die HD-Variante steht zuerst, liefert aber zeitweise gar nichts (am 10.09.2026
+// auch über Frankreich leer). Deshalb dieselbe Logik wie beim Leitmodell: die
+// erste Quelle mit Werten führt.
+const NOWCAST_MODELS = [
+  {id:"meteofrance_arome_france_hd_15min", name:"AROME HD", res:"1,5 km"},
+  {id:"meteofrance_arome_france_15min",    name:"AROME",    res:"2,5 km"},
+];
 
 let lastLoaded = 0;
 
@@ -344,9 +406,113 @@ async function fetchAll(){
   const reihe = fetch("data/messreihe.csv?t=" + Date.now())
     .then(r => r.ok ? r.text() : null).catch(() => null);
 
-  const [wind, wave, live, csv] = await Promise.all(
-    [getJSON(windUrl), getJSON(waveUrl), obs, reihe]);
-  return {wind, wave, live, bias: buildBias(csv)};
+  // Ensemble, Nowcast und AEMET sind Zusatzquellen: Jede fällt für sich aus,
+  // ohne die Prognose mitzureißen. Deshalb einzeln abgefangen statt im
+  // Promise.all scheitern zu lassen.
+  const ensUrl = "https://ensemble-api.open-meteo.com/v1/ensemble"
+    + `?latitude=${LAT}&longitude=${LON}`
+    + "&hourly=wind_speed_10m&wind_speed_unit=kn"
+    + `&models=${ENSEMBLE_MODEL}`
+    + `&forecast_days=${FORECAST_DAYS}&timezone=${encodeURIComponent(TZ)}`;
+  const nowUrl = "https://api.open-meteo.com/v1/forecast"
+    + `?latitude=${LAT}&longitude=${LON}`
+    + "&minutely_15=wind_speed_10m,wind_gusts_10m,wind_direction_10m"
+    + "&forecast_minutely_15=24&wind_speed_unit=kn"
+    + `&models=${NOWCAST_MODELS.map(m=>m.id).join(",")}`
+    + `&timezone=${encodeURIComponent(TZ)}`;
+
+  const ens   = getJSON(ensUrl).catch(() => null);
+  const now15 = getJSON(nowUrl).catch(() => null);
+  // Liegt nur vor, wenn im Repo ein AEMET-Schlüssel hinterlegt ist.
+  const aemet = getJSON("data/aemet.json?t=" + Date.now()).catch(() => null);
+
+  const [wind, wave, live, csv, ensemble, nowcast, aemetData] = await Promise.all(
+    [getJSON(windUrl), getJSON(waveUrl), obs, reihe, ens, now15, aemet]);
+  return {
+    wind, wave, live,
+    bias: buildBias(csv),
+    ensemble,
+    nowcast: buildNowcast(nowcast),
+    aemet: aemetData,
+  };
+}
+
+// ---------- Nowcast aus den 15-Minuten-Schritten ----------
+function buildNowcast(raw){
+  if (!raw || !raw.minutely_15) return null;
+  const m = raw.minutely_15, t = m.time || [];
+  for (const src of NOWCAST_MODELS){
+    const sp = m[`wind_speed_10m_${src.id}`];
+    if (!sp) continue;
+    const schritte = [];
+    for (let i = 0; i < t.length; i++){
+      if (sp[i] == null) continue;
+      schritte.push({
+        t: t[i],
+        wind: sp[i],
+        gust: (m[`wind_gusts_10m_${src.id}`]     || [])[i],
+        dir:  (m[`wind_direction_10m_${src.id}`] || [])[i],
+      });
+    }
+    if (schritte.length) return {name: src.name, res: src.res, schritte};
+  }
+  return null;
+}
+
+// ---------- Wahrscheinlichkeit aus dem Ensemble ----------
+// Je Mitglied die Spitze im Fenster, daraus Streuung und Anteil über der
+// Wing-Schwelle. Nicht der Mittelwert der Mitglieder: Ein Mittel über 40 Läufe
+// glättet die Spitze genauso weg wie ein Modellmittel die Thermik.
+function ensembleFor(ensemble, dateStr, h0, h1){
+  if (!ensemble || !ensemble.hourly) return null;
+  const h = ensemble.hourly, t = h.time || [];
+  const mitglieder = Object.keys(h).filter(k => k.startsWith("wind_speed_10m"));
+  if (!mitglieder.length) return null;
+
+  const idx = [];
+  for (let i = 0; i < t.length; i++){
+    if (t[i].slice(0,10) !== dateStr) continue;
+    const st = +t[i].slice(11,13);
+    if (st >= h0 && st <= h1) idx.push(i);
+  }
+  if (!idx.length) return null;
+
+  const spitzen = [];
+  for (const k of mitglieder){
+    let best = null;
+    for (const i of idx){
+      const v = h[k][i];
+      if (v != null && (best == null || v > best)) best = v;
+    }
+    if (best != null) spitzen.push(best);
+  }
+  if (spitzen.length < 5) return null;
+
+  spitzen.sort((a,b) => a-b);
+  const q = p => spitzen[Math.min(Math.floor(p * spitzen.length), spitzen.length-1)];
+  return {
+    n: spitzen.length,
+    p10: q(0.1),
+    median: median(spitzen),
+    p90: q(0.9),
+    chance: Math.round(100 * spitzen.filter(v => v >= WING_MIN).length / spitzen.length),
+  };
+}
+
+// ---------- AEMET als zweite Meinung ----------
+function aemetFor(aemet, dateStr, h0, h1){
+  if (!aemet || !Array.isArray(aemet.stunden)) return null;
+  const treffer = aemet.stunden.filter(s => {
+    if (s.zeit.slice(0,10) !== dateStr) return false;
+    const st = +s.zeit.slice(11,13);
+    return st >= h0 && st <= h1;
+  });
+  if (!treffer.length) return null;
+  const peak = Math.max(...treffer.map(s => s.kn));
+  const beste = treffer.find(s => s.kn === peak);
+  // grad, nicht das Kürzel: AEMET liefert spanische Rosenkürzel, in denen O für
+  // Westen steht. Die Umrechnung passiert im Abrufskript, hier kommt schon Grad an.
+  return {peak, stunde: +beste.zeit.slice(11,13), grad: beste.grad, n: treffer.length};
 }
 
 // ---------- Aggregation ----------
@@ -360,7 +526,7 @@ function windowIdx(times, dateStr, h0, h1){
   return idx;
 }
 
-function aggregate({wind, wave, bias}){
+function aggregate({wind, wave, bias, ensemble, aemet}){
   const wTimes = wind.hourly.time;
   const vTimes = wave.hourly.time;
 
@@ -509,6 +675,8 @@ function aggregate({wind, wave, bias}){
       spreadMin: peaks.length ? Math.min(...peaks) : null,
       spreadMax: peaks.length ? Math.max(...peaks) : null,
       perSource,
+      ens:   ensembleFor(ensemble, d, s0, s1),
+      aemet: aemetFor(aemet, d, s0, s1),
       waveH:    waveLead ? waveLead.h : null,
       waveP:    waveLead ? waveLead.p : null,
       waveDir:  waveLead ? waveLead.dir : null,
@@ -544,12 +712,41 @@ function renderLive(live){
     + rows + `</div>`;
 }
 
-function render(days, live){
+// Nowcast-Leiste zwischen Messung und Prognose: was in den nächsten Stunden
+// passiert, bevor die Tageskarten den groben Verlauf zeigen.
+function renderNowcast(nc){
+  if (!nc || !nc.schritte.length) return "";
+  const jetzt = Date.now();
+  // Nur was noch kommt, plus den letzten vergangenen Schritt als Anschluss.
+  let ab = nc.schritte.findIndex(s => new Date(s.t).getTime() >= jetzt);
+  if (ab < 0) return "";
+  ab = Math.max(0, ab - 1);
+  const zeigen = nc.schritte.slice(ab, ab + 20);
+  if (!zeigen.length) return "";
+
+  // Gleiche transponierte Tabelle wie die Stundenleiste der Tageskarten –
+  // eine zweite Darstellungsform für dieselbe Sache wäre nur Lernaufwand.
+  const spitze = Math.max(...zeigen.map(s => s.wind));
+  const hl = s => s.wind === spitze ? ' class="hl"' : "";
+  const zeilen = [
+    ["Uhr",    zeigen.map(s => `<th${hl(s)}>${s.t.slice(11,16)}</th>`).join("")],
+    ["Wind",   zeigen.map(s => `<td${hl(s)}><b>${Math.round(s.wind)}</b></td>`).join("")],
+    ["Böen",   zeigen.map(s => `<td${hl(s)}>${s.gust == null ? "–" : Math.round(s.gust)}</td>`).join("")],
+    ["Richt.", zeigen.map(s => `<td${hl(s)}><span class="${windQuality(s.dir).cls}">${dirName(s.dir)}</span></td>`).join("")],
+  ].map(([lab, cells]) => `<tr><th class="rowlab">${lab}</th>${cells}</tr>`).join("");
+
+  return `<div class="nowcast">`
+    + `<div class="lab"><span>Nächste Stunden · 15-Min-Schritte</span>`
+    + `<span class="src">${nc.name} ${nc.res}</span></div>`
+    + `<div class="strip"><table class="hours">${zeilen}</table></div></div>`;
+}
+
+function render(days, live, nowcast){
   const fmt1 = v => v==null ? "–" : v.toFixed(1);
   const fmt0 = v => v==null ? "–" : Math.round(v).toString();
   const fmtSigned = v => v==null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(1);
 
-  let html = renderLive(live) + '<div class="cards">';
+  let html = renderLive(live) + renderNowcast(nowcast) + '<div class="cards">';
   days.forEach((d, idx) => {
     const dateStr = new Date(d.date+"T12:00:00")
       .toLocaleDateString("de-DE",{day:"2-digit",month:"long"});
@@ -560,7 +757,16 @@ function render(days, live){
         + `${isLead ? ' <span class="lead-tag">Leitmodell</span>' : ""}`
         + `${!s.complete ? ' <span class="res">unvollständig</span>' : ""}</span>`
         + `<span class="sv">${fmt0(s.peak)} kn</span></div>`;
-    }).join("");
+    }).join("")
+    // AEMET steht abgesetzt darunter: Es ist keine weitere Rechnung derselben
+    // Art, sondern Spaniens eigener Lauf, redaktionell geprüft. In die
+    // Streuungsangabe darf es deshalb nicht einfließen.
+    + (d.aemet ? `<div class="srow srow-aemet">`
+        + `<span>AEMET <span class="res">2,5 km</span> <span class="zweit-tag">zweite Meinung</span>`
+        + (d.aemet.grad == null ? "" :
+            ` <span class="res">${dirName(d.aemet.grad)} <span class="${windQuality(d.aemet.grad).cls}">${windQuality(d.aemet.grad).label}</span></span>`)
+        + `</span>`
+        + `<span class="sv">${fmt0(d.aemet.peak)} kn</span></div>` : "");
 
     // Große Streuung = die Modelle sind sich uneinig, Prognose unsicher
     const spread = (d.spreadMax != null && d.spreadMin != null) ? d.spreadMax - d.spreadMin : null;
@@ -589,6 +795,11 @@ function render(days, live){
             d.peakHour != null ? ` <small class="at">um ${String(d.peakHour).padStart(2,"0")} Uhr</small>` : ""}</div>
           <div class="sub">${dirArrow(d.windDir)} aus <b>${dirName(d.windDir)}</b> · <span class="${windQuality(d.windDir).cls}">${windQuality(d.windDir).label}</span></div>
           <div class="sub">Böen <b>${fmt0(d.gustMax)} kn</b> · Ø Fenster ${fmt0(d.windAvg)} kn</div>
+          ${d.ens ? `<div class="chance">
+            <div class="chance-head"><span>Chance auf ${WING_MIN} kn</span><b>${d.ens.chance} %</b></div>
+            <div class="chance-bar"><i style="width:${Math.max(2, d.ens.chance)}%"></i></div>
+            <div class="chance-sub">${fmt0(d.ens.p10)}–${fmt0(d.ens.p90)} kn in 80 % der Läufe<br>${d.ens.n} × ICON-EU-EPS · 13 km</div>
+          </div>` : ""}
           ${d.biasDelta != null ? `<div class="sub bias">korrigiert ${fmtSigned(d.biasDelta)} kn · Modell roh ${fmt0(d.peakRaw)} kn<br>aus ${d.biasN} Messungen · ${d.biasStation}</div>` : ""}
           <div class="sub spread${spreadWarn ? " spread-warn" : ""}">Modelle ${d.biasDelta != null ? "roh " : ""}${fmt0(d.spreadMin)}–${fmt0(d.spreadMax)} kn${
             spreadWarn ? " · unsicher" : ""}</div>
@@ -615,8 +826,11 @@ function render(days, live){
   html += "</div>";
   document.getElementById("content").innerHTML = html;
 
-  // Unter der Woche direkt zum relevanten Fenster scrollen
-  document.querySelectorAll(".strip").forEach(el => {
+  // Unter der Woche direkt zum relevanten Fenster scrollen.
+  // Nur die Leisten der Tageskarten: In der Nowcast-Leiste markiert .hl die
+  // Spitze, nicht das Fenster – dorthin zu scrollen würde ausgerechnet die
+  // nächsten Viertelstunden aus dem Bild schieben.
+  document.querySelectorAll(".strip-wrap .strip").forEach(el => {
     const hl = el.querySelector(".hl");
     if (hl) el.scrollLeft = Math.max(0, hl.offsetLeft - 52);
   });
@@ -628,7 +842,7 @@ async function load(){
   try{
     const data = await fetchAll();
     const days = aggregate(data);
-    render(days, data.live);
+    render(days, data.live, data.nowcast);
     lastLoaded = Date.now();
     document.getElementById("updated").textContent =
       "Stand: " + new Date().toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
@@ -648,7 +862,12 @@ async function load(){
           + `Quellenliste weiter der Rohwert. Die Korrektur wird von allein besser, je länger der `
           + `Job mitschreibt. `
         : "")
-      + `Alle Zahlen stammen vom Leitmodell (heute ${lead}, ${leadRes}) – nicht gemittelt. `
+      + `Die Chance-Angabe kommt aus einem ANDEREN Modell als die große Zahl: ICON-EU-EPS rechnet `
+      + `denselben Tag 40-mal durch, aber nur in 13 km Gitterweite. Deshalb kann die Spitze über `
+      + `der Schwelle liegen, während die Chance niedrig ist – das feine Modell sieht die Küstenbrise, `
+      + `das grobe verschmiert sie. Die Prozentzahl taugt für "wie sicher ist das", nicht als zweite `
+      + `Meinung zur Höhe. Als solche steht AEMET in der Quellenliste. `
+      + `Alle übrigen Zahlen stammen vom Leitmodell (heute ${lead}, ${leadRes}) – nicht gemittelt. `
       + `Die ${nWind} Quellen werden nur zur Streuung ausgewiesen: liegen sie weit auseinander, ist die Prognose unsicher. `
       + `Spitze = höchster Stundenwert im Fenster (Mo–Fr ${SESSION_WEEKDAY[0]}–${SESSION_WEEKDAY[1]} Uhr, `
       + `Sa/So ${SESSION_WEEKEND[0]}–${SESSION_WEEKEND[1]} Uhr), weil ein Tagesmittel die Nachmittagsthermik wegrechnet. `

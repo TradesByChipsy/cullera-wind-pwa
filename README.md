@@ -27,6 +27,9 @@ Weitere Eigenschaften:
 - **Leitmodell statt Mittelung** (siehe unten)
 - **Bias-Korrektur aus der eigenen Messreihe** — die Kopfzahl ist am Standort
   nachkalibriert, sobald genug Messpaare vom Marenyet vorliegen
+- **Nowcast-Leiste** in 15-Minuten-Schritten für die nächsten Stunden
+- **Chance statt nur Zahl** — 40 Ensemble-Läufe sagen, wie sicher der Tag ist
+- **AEMET als zweite Meinung** in der Quellenliste, sofern ein Schlüssel hinterlegt ist
 - Auflandig/ablandig-Hinweis — Cullera schaut nach Osten: Wind aus O = auflandig
   (drückt an Land), aus W = ablandig ⚠️ (drückt aufs offene Meer)
 - App-Shell wird offline gecacht, **Wetterdaten nie** — die kommen immer live
@@ -41,9 +44,11 @@ sw.js                             Service Worker (Offline-Shell, Cache-Strategie
 manifest.webmanifest              Installierbarkeit
 icons/                            App-Icons
 scripts/messwerte.py              holt die AVAMET-Messwerte
-.github/workflows/messwerte.yml   führt das Skript alle 30 Min aus
+.github/workflows/messwerte.yml   hält das Skript im 15-Minuten-Takt am Laufen
 data/observations.json            aktuelle Messung (vom Job geschrieben)
-data/messreihe.csv                Messung + Prognose, Grundlage der Bias-Korrektur
+data/messreihe.csv                Messung + AROME, Grundlage der Bias-Korrektur
+data/prognosereihe.csv            alle Modelle je Stunde, für die Modellauswertung
+data/aemet.json                   AEMET-Vorhersage (nur mit hinterlegtem Schlüssel)
 ```
 
 ---
@@ -58,24 +63,34 @@ Gitterweite fassen Land und Meer in einer Zelle zusammen und dämpfen den Wind �
 die Landrauigkeit weg. Ein Median über viele Modelle wirft damit genau die Quelle
 raus, die als einzige hinsehen kann.
 
+### Der Prognosepunkt
+
+**39,142 / −0,239** — die Position der AVAMET-Station el Marenyet. Bewusst genau
+dorthin gelegt, wo gemessen wird: Die Bias-Korrektur eicht den Modellwert gegen
+diese Station, und das ist nur sinnvoll, wenn beide denselben Ort meinen.
+
+Vorher lag er auf 39,169 / −0,229, gut 3 km weiter nördlich — bei AROME HD zwei
+Gitterzellen. Der Punkt steckt an zwei Stellen und muss in beiden gleich sein:
+`LAT/LON` in `index.html` und in `scripts/messwerte.py`.
+
 Deshalb führt pro Tag das **feinste Modell, das das Zeitfenster lückenlos abdeckt**:
 
 | Priorität | Modell | Auflösung | Gitterpunkt | Reicht |
 |---|---|---|---|---|
-| 1 | Météo-France AROME HD | 1,5 km | 0,6 km | ~69 h |
-| 2 | Météo-France AROME | 2,5 km | 1,4 km | ~69 h |
-| 3 | ECMWF IFS · HRES | 9 km | 3,0 km | 15 Tage |
-| 4 | ICON-EU · DWD | 7 km | 2,6 km | 5 Tage |
-| 5 | UK Met Office | 10 km | 4,3 km | 5 Tage |
-| 6 | ARPEGE | 11 km | 6,5 km | 4 Tage |
-| 7 | GFS · NOAA | 13 km | 2,4 km | 16 Tage |
+| 1 | Météo-France AROME HD | 1,5 km | 0,2 km | ~69 h |
+| 2 | Météo-France AROME | 2,5 km | 1,3 km | ~69 h |
+| 3 | ECMWF IFS · HRES | 9 km | 2,4 km | 15 Tage |
+| 4 | ICON-EU · DWD | 7 km | 2,1 km | 5 Tage |
+| 5 | UK Met Office | 10 km | 6,2 km | 5 Tage |
+| 6 | ARPEGE | 11 km | 8,3 km | 4 Tage |
+| 7 | GFS · NOAA | 13 km | 5,0 km | 16 Tage |
 
-Spalte „Gitterpunkt" = Abstand des tatsächlich ausgelesenen Punktes zum Spot,
-gemessen am 10.09.2026. Die API meldet ihn in jeder Antwort zurück.
+Spalte „Gitterpunkt" = Abstand des tatsächlich ausgelesenen Punktes zum
+Prognosepunkt, gemessen am 10.09.2026. Die API meldet ihn in jeder Antwort zurück.
 
 **Ab Platz 3 entscheidet nicht mehr die Auflösung allein.** ECMWF IFS ist mit 9 km
 gröber als ICON-EU mit 7 km, steht aber davor: Es verifiziert ab Tag 2 durchweg
-besser, und sein Gitterpunkt liegt mit 3,0 km praktisch gleich nah. Das ist die
+besser, und sein Gitterpunkt liegt mit 2,4 gegen 2,1 km praktisch gleich nah. Das ist die
 einzige Ausnahme von der Auflösungsregel — und sie ist eine Annahme, keine Messung.
 Sobald die Messreihe genug Tag-3-Paare hat, lässt sie sich nachprüfen.
 
@@ -84,7 +99,8 @@ nur als Streuungsangabe — liegen sie weit auseinander, steht „unsicher" an d
 Welches Modell gerade führt, zeigt das „Leitmodell"-Etikett in der Quellenliste.
 
 Bei den Wellen führt **EWAM** (5 km), das mit 39,15/-0,20 den Küstenpunkt am besten
-trifft.
+trifft — 3,5 km vom Prognosepunkt. Alle vier Wellenmodelle liefern dort unverändert
+Werte; der Seepunkt ist durch die Verschiebung nicht verloren gegangen.
 
 ### Warum das Fenster um 20 Uhr endet
 
@@ -99,14 +115,14 @@ Leitmodell-Etikett.
 
 ### Bewusst nicht dabei
 
-- **ECMWF IFS 0.25° und AIFS 0.25°** — rasten beide auf 39,0/-0,25 ein und messen
-  damit 18,4 km südlich von Cullera, konstant zu niedrig. Das gilt **nicht** für
-  `ecmwf_ifs`: Seit ECMWF am 1.10.2025 den vollen Echtzeitkatalog unter CC-BY 4.0
-  geöffnet hat, gibt es HRES nativ in 9 km — und damit rückt der Gitterpunkt von
-  18,4 km auf 3,0 km heran. Der frühere Ausschluss war korrekt und ist überholt.
+- **ECMWF IFS 0.25° und AIFS 0.25°** — rasten beide auf 39,0/-0,25 ein, also
+  15,8 km südlich, konstant zu niedrig. Das gilt **nicht** für `ecmwf_ifs`: Seit
+  ECMWF am 1.10.2025 den vollen Echtzeitkatalog unter CC-BY 4.0 geöffnet hat, gibt
+  es HRES nativ in 9 km — und damit rückt der Gitterpunkt von 15,8 km auf 2,4 km
+  heran. Der frühere Ausschluss war korrekt und ist überholt.
 - **ECMWF ENS 0.25°** (51 Mitglieder) — sitzt auf demselben zu weit entfernten
-  Punkt. Für Wahrscheinlichkeiten wäre **ICON-EU-EPS** (40 Mitglieder, Gitterpunkt
-  4,5 km) die richtige Quelle; noch nicht eingebaut.
+  Punkt. Für die Wahrscheinlichkeit führt deshalb **ICON-EU-EPS**: nur 13 km grob,
+  aber 40 Mitglieder und der Gitterpunkt 2,1 km entfernt statt 15,8.
 - **GFS-Wave** — rastet auf 39,25/0,0 ein, etwa 20 km draußen auf See.
 
 Geprüft und für Cullera **nicht verfügbar** (außerhalb des Modellgebiets):
@@ -143,10 +159,13 @@ heraus nicht abrufen. Deshalb holt ein Actions-Job die Werte und legt sie als
 Datei ins Repo; die App liest sie dann von der eigenen Domain.
 
 ```
-alle 30 Min (05–19 UTC)
+alle 15 Min (05–19 UTC)
    └─ scripts/messwerte.py
         ├─ liest die drei AVAMET-Stationsseiten
-        ├─ holt den AROME-Wert für dieselbe Stunde
+        ├─ holt alle sieben Modelle für dieselbe Stunde
+        ├─ holt die AEMET-Vorhersage (nur mit Schlüssel)
+        ├─ ergänzt data/prognosereihe.csv    → Modellauswertung
+        ├─ schreibt data/aemet.json          → zweite Meinung
         ├─ schreibt data/observations.json   → die App
         └─ ergänzt data/messreihe.csv        → die Auswertung
 ```
@@ -155,7 +174,45 @@ Fällt eine Station aus, wird sie übersprungen; fallen alle aus, bleibt die alt
 `observations.json` stehen. Messwerte älter als 45 Minuten werden in der App
 ausgegraut und als „veraltet" markiert.
 
-### Drei Fallstricke, die Zeit gekostet haben
+### Warum der Job eine Schleife dreht
+
+Weil GitHub geplante Workflows auf freien Repos nur sporadisch startet. Der Cron
+stand auf `0,30 5-19 * * *`, also 30 Läufe am Tag. Tatsächlich kamen an:
+
+```
+03.09. 4    04.09. 4    05.09. 5    06.09. 5
+07.09. 3    08.09. 4    09.09. 4    10.09. 2
+```
+
+Rund ein Achtel. Deshalb sammelte die Messreihe in 25 Tagen 460 Zeilen statt
+mehrerer Tausend, und die stationsgenaue Bias-Korrektur hätte Monate gebraucht,
+um überhaupt anzuspringen.
+
+Die Lösung verlässt sich nicht mehr darauf, dass ein geplanter Start ankommt:
+Jeder Lauf, der tatsächlich startet, bleibt bis zu 5,5 Stunden am Leben und holt
+darin alle 15 Minuten neu. Fällt ein Start aus, läuft die Schleife des vorigen
+weiter; landet ein neuer, löst er den alten ab (`cancel-in-progress`). Bei
+beobachteten Lücken von 4–5 Stunden zwischen zwei tatsächlichen Starts deckt das
+den Tag durchgehend ab.
+
+Kosten: keine. Das Repo ist öffentlich, damit sind die Actions-Minuten auf den
+Standard-Runnern kostenlos. Auf einem privaten Repo wäre dieser Entwurf falsch —
+er würde das Monatskontingent in wenigen Tagen aufbrauchen.
+
+Wer den Takt wirklich auf die Minute genau braucht, müsste von außen anstoßen:
+ein freier Cron-Dienst, der die `workflow_dispatch`-Schnittstelle aufruft. Das
+kostet ein Token als Repo-Secret und einen Account mehr — dafür kommt jeder Lauf.
+
+### Vier Fallstricke, die Zeit gekostet haben
+
+- **AEMET gibt die Windrichtung spanisch an — und zwei Kürzel bedeuten dort das
+  Gegenteil.** `O` ist *Oeste*, also West; `SO` ist *Suroeste*, also Südwest. In
+  der deutschen Rose der App heißen dieselben Kürzel Ost und Südost. Ungeprüft
+  übernommen wäre aus ablandigem Westwind auflandiger Ostwind geworden — aus einer
+  Warnung eine Einladung. Das Abrufskript übersetzt deshalb in Grad
+  (`AEMET_GRAD`), und die App bildet daraus mit ihrer eigenen Rose die Anzeige.
+  Beim ersten echten Abruf war das sofort sichtbar: AEMETs Vormittags-`O` wurde
+  zu 270° = W, der Nachmittag zu 90° = O — was zur gemessenen Seebrise passt.
 
 - **AVAMET kodiert die Ortszeit als UTC.** Ein Zeitstempel von 09:00 Ortszeit kommt
   als Epoch für 09:00 UTC an. Wer ihn normal als UTC liest, landet im Sommer zwei
@@ -182,7 +239,14 @@ damit selbst.** Je Tagesstunde wird der Median aus (gemessen − prognostiziert)
 gebildet und auf den Modellwert addiert. Median statt Mittel, weil ein einzelner
 hängender Sensor ein Mittel über acht Werte spürbar verzieht.
 
-Was der bisherige Bestand sagt (460 Paare, 16.08.–10.09.2026):
+**Die Altdaten zählen dafür nicht mit.** Die 460 Zeilen bis zum 10.09.2026 stammen
+von Faro und San Antonio und wurden gegen den alten Prognosepunkt geschrieben —
+andere Station, anderer Gitterpunkt. Weil als Referenz nur Marenyet zugelassen ist
+und diese Station erst ab dem 10.09. mitläuft, fließt in die Korrektur
+ausschließlich ein, was gegen den heutigen Punkt gemessen wurde. Die Altdaten
+bleiben als Beleg in der Datei, wirken aber nicht auf die Anzeige.
+
+Was der Altbestand sagt (460 Paare, 16.08.–10.09.2026, alter Prognosepunkt):
 
 | | AROME sagt | gemessen | Abweichung |
 |---|---|---|---|
@@ -215,9 +279,94 @@ Die bisherige Stichprobe ist außerdem klein und windarm (gemessenes Mittel 4–
 über kräftige Tage sagt sie noch wenig. Die Korrektur wird von allein besser, je
 länger der Job mitschreibt.
 
-**Offen:** In der CSV steht nur `arome_kn`. Würden alle Modelle mitgeschrieben,
-ließe sich je Modell und Vorlaufzeit bestimmen, welches an diesem Spot wirklich
-führen sollte — dieselbe Funktion, für die PredictWind Geld nimmt.
+### Prognosereihe — alle Modelle mitschreiben
+
+`data/prognosereihe.csv` hält je Stunde fest, was **jedes** der sieben Modelle
+für diese Stunde gesagt hat (`zeit,modell,wind_kn,boe_kn,grad`). Langformat, eine
+Zeile pro Modell: So braucht ein achtes Modell nie ein Schema-Update, und alte
+Auswertungen bleiben lesbar. Entdoppelt nach (Zeit, Modell) — der Job läuft
+viermal je Stunde, die Prognose für diese Stunde ändert sich dabei kaum.
+
+Zusammen mit `messreihe.csv` über die Stunde verknüpft ergibt das die Auswertung,
+die die eigentliche Frage beantwortet: **Welches Modell liegt an diesem Spot
+tatsächlich am nächsten dran?** Bisher stand dort nur `arome_kn`, und die
+Reihenfolge der Modelle war eine begründete Annahme. Mit dieser Datei wird sie
+nach ein paar Wochen messbar — dieselbe Funktion, für die PredictWind Geld nimmt,
+nur mit der Station am eigenen Strand statt einer beliebigen in der Nähe.
+
+Die Datei wächst um rund 100 Zeilen am Tag. Wenn sie irgendwann stört, gehört sie
+jahresweise archiviert statt gelöscht.
+
+---
+
+## Nowcast, Chance, zweite Meinung
+
+### Nowcast — die nächsten Stunden in 15-Minuten-Schritten
+
+Über den Tageskarten steht eine Leiste mit dem, was in den nächsten rund fünf
+Stunden passiert. Sie kommt aus dem 15-Minuten-Lauf von AROME, der stündlich neu
+gerechnet wird — der einzige Lauf hier, der schnell genug nachzieht, um die Brise
+beim Einsetzen zu erwischen. Genau das Fenster zwischen „nachmittags entscheiden"
+und „am Strand stehen".
+
+Wie beim Leitmodell führt die feinste Quelle, die Werte liefert:
+
+| Priorität | Modell | Auflösung |
+|---|---|---|
+| 1 | AROME HD 15-Min | 1,5 km |
+| 2 | AROME 15-Min | 2,5 km |
+
+Die HD-Variante lieferte am 10.09.2026 gar nichts — auch über Frankreich nicht,
+es lag also nicht an der Abdeckung. Deshalb der Rückfall. Welche Quelle gerade
+führt, steht rechts über der Leiste.
+
+### Chance — 40 Läufe statt einer Zahl
+
+**ICON-EU-EPS** rechnet denselben Tag 40-mal mit leicht gestörten
+Startbedingungen. Daraus wird der Anteil der Läufe, die die Wing-Schwelle von
+14 kn erreichen, plus die Spanne, in der 80 % der Läufe liegen.
+
+Die Schwelle stammt aus dem Dashboard der Vorphase (`WING_MIN = 14`), damit die
+App dieselbe Sprache spricht.
+
+**Wichtig beim Lesen:** Die Chance kommt aus einem **anderen Modell** als die
+große Zahl. ICON-EU-EPS ist mit 13 km deutlich gröber als AROME mit 1,5 km und
+verschmiert die Küstenbrise. Deshalb kann die Spitze über der Schwelle liegen,
+während die Chance niedrig ist — beide Zahlen stimmen, sie sehen nur verschieden
+genau hin. Die Prozentzahl taugt für „wie sicher ist der Tag", nicht als zweite
+Meinung zur Höhe.
+
+### AEMET — die zweite Meinung zur Höhe
+
+Dafür steht AEMET in der Quellenliste, abgesetzt unter den Modellen. Spaniens
+eigener HARMONIE-AROME-Lauf mit eigener Datenassimilation und eigener Orografie —
+und redaktionell geprüft, kein roher Modelloutput. Stimmen AROME und AEMET
+überein, ist die Prognose belastbar; wenn nicht, weiß man wenigstens, dass man es
+nicht weiß.
+
+Der Schlüssel gehört nicht in eine statische PWA, deshalb holt der Actions-Job
+die Daten und legt sie als `data/aemet.json` ab.
+
+Die Vorhersage reicht rund **48 Stunden** — die zweite Meinung erscheint also nur
+auf den ersten beiden Tageskarten. Am dritten Tag liefert AEMET nur noch die
+Nachtstunden 00–07, die außerhalb jedes Fensters liegen; dass die Zeile dort
+fehlt, ist richtig und kein Ausfall.
+
+Abgefragt wird höchstens **einmal pro Stunde** (`AEMET_SCHONFRIST_MIN`), auch
+wenn der Job alle 15 Minuten läuft: AEMET rechnet die Vorhersage nur ein paar Mal
+am Tag neu, und die Ratenbegrenzung greift schnell — ein einzelner Testabruf
+reichte für HTTP 429. Ist die Datei jünger als die Schonfrist, wird gar nicht
+erst angefragt.
+
+**Einrichten:**
+
+1. Schlüssel anfordern unter <https://opendata.aemet.es/centrodedescargas/altaUsuario>
+   — kommt per E-Mail, kostenlos.
+2. Im Repo unter *Settings → Secrets and variables → Actions → New repository
+   secret* als `AEMET_API_KEY` hinterlegen.
+
+Fehlt der Schlüssel, überspringt das Skript den Teil und die App zeigt einfach
+keine AEMET-Zeile. Nichts bricht.
 
 ### Lizenz der Messdaten
 

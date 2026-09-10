@@ -1,29 +1,53 @@
 name: Messwerte Cullera abholen
 
-# Holt die Windmesswerte der beiden AVAMET-Stationen in Cullera und legt sie als
-# data/observations.json ins Repo. Die PWA kann AVAMET nicht direkt abrufen –
-# es fehlen die CORS-Header. Über den Umweg Repo liest sie die Daten von der
-# eigenen Domain.
+# Holt die Windmesswerte der drei AVAMET-Stationen in Cullera, die Prognose aller
+# Modelle und die AEMET-Vorhersage, und legt alles als Dateien ins Repo. Die PWA
+# kann beide Quellen nicht selbst abrufen: AVAMET schickt keine CORS-Header,
+# AEMET verlangt einen Schlüssel, der nicht in den Browser gehört.
+#
+# WARUM EINE SCHLEIFE STATT NUR CRON
+# GitHub führt geplante Workflows auf freien Repos nur sporadisch aus. Trotz
+# `cron: "0,30 5-19 * * *"` — also 30 Läufe am Tag — kamen im September 2026
+# tatsächlich nur 2 bis 5 an:
+#
+#     03.09. 4   04.09. 4   05.09. 5   06.09. 5
+#     07.09. 3   08.09. 4   09.09. 4   10.09. 2
+#
+# Deshalb sammelte die Messreihe in 25 Tagen 460 Zeilen statt mehrerer Tausend,
+# und die stationsgenaue Bias-Korrektur hätte Monate gebraucht, um überhaupt
+# anzuspringen.
+#
+# Die Lösung verlässt sich nicht mehr darauf, dass ein geplanter Start ankommt:
+# Jeder Lauf, der tatsächlich startet, bleibt bis zu 5,5 Stunden am Leben und
+# holt darin alle 15 Minuten neu. Fällt ein Start aus, läuft die Schleife des
+# vorigen weiter. Landet ein neuer, löst er den alten ab. Weil das Repo
+# öffentlich ist, sind die Actions-Minuten dafür kostenlos.
 
 on:
   schedule:
-    # Alle 30 Minuten während der Tagstunden in Cullera (05–19 UTC = 07–21 Ortszeit
-    # im Sommer). Nachts misst niemand Seebrise.
-    - cron: "0,30 5-19 * * *"
+    # Soll: alle 15 Minuten während der Tagstunden in Cullera (05–19 UTC =
+    # 07–21 Ortszeit im Sommer). Nachts misst niemand Seebrise. Dass GitHub
+    # davon nur einen Bruchteil ausführt, fängt die Schleife im Job ab.
+    - cron: "*/15 5-19 * * *"
   workflow_dispatch:
 
-# Der Job schreibt observations.json und messreihe.csv zurück ins Repo.
+# Der Job schreibt observations.json, messreihe.csv, prognosereihe.csv und
+# aemet.json zurück ins Repo.
 permissions:
   contents: write
 
-# Zwei gleichzeitige Läufe würden sich beim Push gegenseitig abschießen.
 concurrency:
   group: messwerte
-  cancel-in-progress: false
+  # Ein neu gestarteter Lauf löst den laufenden ab, statt sich dahinter
+  # anzustellen — sonst stauten sich mehrstündige Läufe auf.
+  cancel-in-progress: true
 
 jobs:
   messwerte:
     runs-on: ubuntu-latest
+    # Unter GitHubs hartem 6-Stunden-Limit für einen Job bleiben.
+    timeout-minutes: 350
+
     steps:
       - uses: actions/checkout@v7
 
@@ -32,22 +56,52 @@ jobs:
           python-version: "3.12"
 
       # Keine Abhängigkeiten nötig – das Skript nutzt nur die Standardbibliothek.
-      - name: Messwerte abrufen
-        run: python scripts/messwerte.py
-
-      - name: Änderungen committen
+      - name: Alle 15 Minuten abholen
+        env:
+          # Optional. Fehlt der Schlüssel, überspringt das Skript den
+          # AEMET-Teil und schreibt die übrigen Dateien normal.
+          AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/
-          # Ohne Änderung nicht committen, sonst entsteht alle 30 Minuten ein
-          # leerer Commit.
-          if git diff --staged --quiet; then
-            echo "Keine neuen Messwerte."
-          else
-            git commit -m "Messwerte $(date -u '+%Y-%m-%d %H:%M UTC')"
-            # Wurde zwischenzeitlich von Hand gepusht, würde der Push sonst
-            # abgelehnt und der Lauf schlüge fehl.
-            git pull --rebase --autostash origin master
-            git push
-          fi
+
+          # 340 statt 350 Minuten: Der letzte Durchgang soll fertig werden,
+          # bevor GitHub den Job hart abschneidet.
+          ENDE=$(( $(date -u +%s) + 340 * 60 ))
+
+          while true; do
+            echo "───── Durchgang $(date -u '+%Y-%m-%d %H:%M UTC') ─────"
+
+            # Ein Abruffehler darf die Schleife nie beenden – Amateurstationen
+            # und offene APIs fallen gelegentlich aus, der nächste Durchgang
+            # holt es nach.
+            python scripts/messwerte.py || echo "Abruf fehlgeschlagen, Schleife läuft weiter."
+
+            git add data/
+            if git diff --staged --quiet; then
+              echo "Keine neuen Daten."
+            else
+              git commit -m "Messwerte $(date -u '+%Y-%m-%d %H:%M UTC')"
+            fi
+
+            # Immer pushen, nicht nur nach einem frischen Commit: Scheitert ein
+            # Push, läge der Commit sonst bis zum nächsten Datenwechsel
+            # unveröffentlicht herum. Ohne Rebase würde er abgelehnt, sobald
+            # zwischenzeitlich von Hand gepusht wurde.
+            git pull --rebase --autostash origin master || true
+            git push || echo "Push fehlgeschlagen, nächster Durchgang holt es nach."
+
+            if [ "$(date -u +%s)" -ge "$ENDE" ]; then
+              echo "Laufzeitfenster ausgeschöpft – der nächste geplante Start übernimmt."
+              break
+            fi
+
+            # Führende Null würde als Oktalzahl gelesen, deshalb 10#
+            STUNDE=$((10#$(date -u +%H)))
+            if [ "$STUNDE" -lt 5 ] || [ "$STUNDE" -gt 19 ]; then
+              echo "Außerhalb der Tagstunden – Schleife endet."
+              break
+            fi
+
+            sleep 900
+          done
