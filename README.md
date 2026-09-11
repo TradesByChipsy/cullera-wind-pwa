@@ -43,7 +43,9 @@ index.html                        die komplette App
 sw.js                             Service Worker (Offline-Shell, Cache-Strategie)
 manifest.webmanifest              Installierbarkeit
 icons/                            App-Icons
-scripts/messwerte.py              holt die AVAMET-Messwerte
+scripts/messwerte.py              holt Messwerte, Prognosen und AEMET
+scripts/test_app.mjs              Tests der Rechenfunktionen aus index.html
+scripts/test_messwerte.py         Tests des Abrufskripts
 .github/workflows/messwerte.yml   hält das Skript im 15-Minuten-Takt am Laufen
 data/observations.json            aktuelle Messung (vom Job geschrieben)
 data/messreihe.csv                Messung + AROME, Grundlage der Bias-Korrektur
@@ -203,6 +205,35 @@ Wer den Takt wirklich auf die Minute genau braucht, müsste von außen anstoßen
 ein freier Cron-Dienst, der die `workflow_dispatch`-Schnittstelle aufruft. Das
 kostet ein Token als Repo-Secret und einen Account mehr — dafür kommt jeder Lauf.
 
+---
+
+## Tests
+
+```bash
+node scripts/test_app.mjs        # Rechenfunktionen aus index.html
+python scripts/test_messwerte.py # Abrufskript
+```
+
+Beide laufen ohne Netz, ohne Abhängigkeiten und ohne Build-Schritt — passend zum
+Rest des Projekts. Zusammen 76 Prüfungen, Rückgabewert 1 bei Fehlern.
+
+`test_app.mjs` schneidet die Funktionen per Regex aus dem `<script>`-Block von
+`index.html` und lädt sie als Modul. Damit wird der **echte** Quelltext geprüft
+und nicht eine Kopie, die auseinanderdriften kann. Der Preis: Wer eine dieser
+Funktionen umbenennt oder anders formatiert, muss das Suchmuster nachziehen — der
+Test sagt dann klar, welches.
+
+Geprüft wird, was ohne Netz und ohne DOM auskommt: die Bias-Bildung, die
+Nowcast-Auswahl, die Ensemble-Auswertung, der AEMET-Abgleich, die Richtungs- und
+Zeitumrechnung sowie alle Ausfallpfade. Nicht geprüft: Rendering und die echten
+API-Antworten — dafür bleibt der Blick in den Browser.
+
+Festgenagelt ist dort auch der teuerste denkbare Fehler des Projekts: dass
+spanische und deutsche Himmelsrichtungen verwechselt werden. `AEMET_GRAD["O"]`
+muss 270 sein, `compass(90)` muss `"O"` sein — beides steht als Test drin.
+
+---
+
 ### Vier Fallstricke, die Zeit gekostet haben
 
 - **AEMET gibt die Windrichtung spanisch an — und zwei Kürzel bedeuten dort das
@@ -262,8 +293,10 @@ Regeln, nach denen korrigiert wird:
 - **Nur AROME HD.** Gegen dieses eine Modell wurde gemessen; die Abweichung auf
   ECMWF oder ICON-EU anzuwenden wäre geraten. Führt ein anderes Modell, zeigt die
   App den Rohwert.
-- **Nur gegen Marenyet.** Bis diese Station 30 Paare hat, bleibt die Korrektur
-  aus und die App verhält sich wie bisher. Sie schaltet sich dann von selbst zu.
+- **Nur gegen Marenyet,** und **nur Stunde für Stunde.** Eine Tagesstunde wird
+  erst korrigiert, wenn sie selbst genug Paare hat (`BIAS_MIN_HOUR`); alle anderen
+  bleiben roh. Es gibt bewusst **keinen** tageszeitübergreifenden Rückfallwert —
+  siehe unten, warum.
 - **Die Spitze wird neu gesucht,** nicht nachträglich verschoben — weil der Bias
   über den Tag wandert, kann die Spitzenstunde eine andere sein als im Rohlauf.
 - **Die Böe wandert mit,** um denselben Betrag. Gemessen wurde nur der mittlere
@@ -272,6 +305,33 @@ Regeln, nach denen korrigiert wird:
 - **Gedeckelt auf ±8 kn** gegen Ausreißer, und nie unter 0 kn.
 - **Die Quellenliste bleibt roh** — sie zeigt die Streuung der Modelle, nicht die
   korrigierte Zahl.
+
+#### Warum es keinen Rückfallwert gibt
+
+Eine frühere Fassung schaltete ab 30 Paaren *insgesamt* scharf und gab Stunden
+ohne eigene Stichprobe den Median über alle Stunden. Die echten Marenyet-Daten
+zeigen, warum das falsch ist:
+
+```
+12 Uhr  +4,5 kn        20 Uhr  -4,0 kn
+19 Uhr  -1,7 kn        21 Uhr  -5,0 kn
+                Gesamtmedian: -0,2 kn
+```
+
+Der Gesamtmedian liegt zwischen Vormittagsüberschuss und Abendfehler und ist
+damit in beiden Tageshälften falsch. Er hätte um 21 Uhr −0,2 statt −5,0 korrigiert
+und dabei „korrigiert" ins Kartenfeld geschrieben — eine Eichung vorgetäuscht, die
+nicht stattfand. Genau das Mitteln über die Tageszeit, das die Stundenaufteilung
+verhindern soll.
+
+Jetzt gilt: Jede Stunde wird nur mit ihrer eigenen Stichprobe korrigiert. Solange
+keine Stunde genug Paare hat, gibt es überhaupt keine Korrektur.
+
+**Sichtbar in der App:** Geeichte Stunden sind in der Stundenleiste unterstrichen,
+und die Karte nennt den Fortschritt (`3/6 Fensterstunden geeicht`). Die Bias-Zeile
+erscheint nur, wenn ausgerechnet die Spitzenstunde geeicht ist — sonst steht keine
+Behauptung an der großen Zahl. Im Übergang stehen korrigierte und rohe Stunden
+nebeneinander; der Sprung dazwischen ist echt und wird markiert statt geglättet.
 
 **Beim Auswerten beachten:** Das Anemometer am Faro steht ca. 20 m hoch, die Modelle
 liefern 10-m-Wind. Ein gemessener Mehrwert ist nicht automatisch ein Modellfehler.

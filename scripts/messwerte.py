@@ -18,7 +18,7 @@ import os
 import re
 import sys
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Europe/Madrid")
@@ -192,6 +192,10 @@ def read_station(sid, name):
     return {
         "name": name,
         "kn": round(speed[ts] / KMH_TO_KN),
+        # Ungerundet für die Messreihe: Die Bias-Korrektur soll auf 1 kn genau
+        # sein, da darf die Grundlage nicht vorher ±0,5 kn verlieren. Die Anzeige
+        # nimmt weiter den ganzzahligen Wert.
+        "kn_genau": round(speed[ts] / KMH_TO_KN, 1),
         "grad": round(deg) if deg is not None else None,
         "richtung": compass(deg),
         "gemessen": measured.isoformat(timespec="minutes"),
@@ -311,16 +315,28 @@ def main():
     print("AVAMET-Stationen abrufen:")
     stations = [s for s in (read_station(sid, nm) for sid, nm in STATIONS) if s]
 
+    os.makedirs(os.path.dirname(OBS_PATH), exist_ok=True)
+
+    # Prognosereihe und AEMET ZUERST und unabhängig von den Stationen: Beide
+    # hängen nicht an AVAMET. Standen sie hinter dem Ausstieg unten, verlor ein
+    # AVAMET-Ausfall – bei Amateurstationen der Normalfall – auch die
+    # Modellauswertung und die zweite Meinung für dieselbe Stunde.
+    stunde, prognosen = prognosen_now()
+    schreibe_prognosereihe(stunde, prognosen)
+    schreibe_aemet()
+
     if not stations:
         print("Keine Station lieferte Daten – observations.json bleibt unverändert.")
         return 1
 
-    os.makedirs(os.path.dirname(OBS_PATH), exist_ok=True)
-
+    # kn_genau bleibt draußen: Die App zeigt ganze Knoten, die Nachkommastelle
+    # wird nur in der Messreihe gebraucht. Was die App nicht liest, gehört auch
+    # nicht in ihre Datei.
     payload = {
         "stand": datetime.now(TZ).isoformat(timespec="minutes"),
         "quelle": "AVAMET (CC BY-NC-ND 4.0)",
-        "stationen": stations,
+        "stationen": [{k: v for k, v in s.items() if k != "kn_genau"}
+                      for s in stations],
     }
     with open(OBS_PATH, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=1)
@@ -342,13 +358,6 @@ def main():
     neu = [s for s in stations
            if not s["veraltet"] and (s["gemessen"], s["name"]) not in bekannt]
 
-    # Prognosen und AEMET werden auch dann geholt, wenn keine neue Messung
-    # vorliegt: Sie hängen nicht an den Stationen, und der Job läuft jetzt alle
-    # 15 Minuten – die Prognosereihe soll dabei keine Stunde verpassen.
-    stunde, prognosen = prognosen_now()
-    schreibe_prognosereihe(stunde, prognosen)
-    schreibe_aemet()
-
     if not neu:
         print("Keine neue Messung seit dem letzten Lauf – Messreihe unverändert.")
         return 0
@@ -359,7 +368,7 @@ def main():
         if not bekannt:
             w.writerow(["zeit", "station", "gemessen_kn", "grad", "arome_kn"])
         for s in neu:
-            w.writerow([s["gemessen"], s["name"], s["kn"], s["grad"],
+            w.writerow([s["gemessen"], s["name"], s["kn_genau"], s["grad"],
                         "" if arome is None else round(arome, 1)])
     print(f"Messreihe: {len(neu)} neue Zeile(n)")
     return 0

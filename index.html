@@ -157,6 +157,12 @@
     text-align:left;padding:3.5px 8px 3.5px 4px;min-width:46px;
     box-shadow:2px 0 4px -2px rgba(6,36,58,.15)
   }
+  /* Geeichte Stunde: dezent unterstrichen. Der Leser soll sehen, wo die Zahl auf
+     eigener Messung steht und wo auf blankem Modell – ohne dass es wie eine
+     Warnung aussieht. */
+  table.hours td.geeicht b{box-shadow:0 2px 0 -1px var(--coral-deep);padding-bottom:1px}
+  .geeicht-hint{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.04em;
+    text-transform:none;color:var(--coral-deep);margin-left:8px}
   table.hours .hl{background:rgba(242,169,0,.16)}
   table.hours tr:first-child th.hl{color:#b07c00;font-weight:600}
 
@@ -258,16 +264,26 @@ const WAVE_MODELS = [
 // von allein besser, je länger der Job läuft.
 const BIAS_MODEL_ID   = "meteofrance_arome_france_hd"; // nur dieses Modell wurde vermessen
 const BIAS_MIN_HOUR   = 8;   // weniger Paare in einer Stunde = zu zufällig
-const BIAS_MIN_TOTAL  = 30;  // Mindestumfang, damit eine Station überhaupt Referenz wird
 const BIAS_CAP        = 8;   // kn – Deckel gegen hängende Sensoren und Ausreißer
+// Es gibt bewusst KEINE Gesamtschwelle und keinen tageszeitübergreifenden
+// Rückfallwert. Eine frühere Fassung schaltete ab 30 Paaren insgesamt scharf und
+// gab Stunden ohne eigene Stichprobe den Median über ALLE Stunden. Die echten
+// Marenyet-Daten zeigen, warum das falsch ist:
+//     12 Uhr  +4,5 kn      20 Uhr  −4,0 kn
+//     19 Uhr  −1,7 kn      21 Uhr  −5,0 kn
+//     Gesamtmedian: −0,2 kn
+// Der Gesamtmedian ist das Mittel zwischen Vormittagsüberschuss und Abendfehler
+// und damit in beiden Tageshälften falsch — er hätte um 21 Uhr −0,2 statt −5,0
+// korrigiert und dabei "korrigiert" ins Kartenfeld geschrieben. Also: Jede Stunde
+// wird nur mit ihrer EIGENEN Stichprobe korrigiert, alle anderen bleiben roh.
 // Referenzstation: NUR Marenyet – dort wird gefoilt, dorthin muss die Zahl passen.
 // Faro als Übergangslösung wurde verworfen: Die beiden Stationen verhalten sich
 // nicht proportional zueinander. Am 10.09. maß der Faro um 15:30 Uhr 7,0 kn gegen
 // 5,2 kn am Marenyet, um 16:50 Uhr aber nur noch 4,0 gegen 10,0 kn. Eine an Faro
 // geeichte Korrektur hätte an diesem Nachmittag rund 4 kn angezeigt, während am
 // Strand 10 kn standen – genau der Fehler vom 15.08., nur mit neuer Mechanik.
-// Bis Marenyet genug Paare gesammelt hat (BIAS_MIN_TOTAL), zeigt die App den
-// Rohwert wie bisher. Die Korrektur schaltet sich dann von selbst zu.
+// Solange keine Stunde genug Paare hat, zeigt die App den Rohwert wie bisher.
+// Die Korrektur schaltet sich dann Stunde für Stunde von selbst zu.
 const BIAS_STATIONS = ["Cullera Marenyet"];
 
 // Ensemble statt Einzelwert: ICON-EU-EPS rechnet denselben Tag 40-mal mit leicht
@@ -362,26 +378,32 @@ function buildBias(text){
   }
   if (!rows.length) return null;
 
-  const station = BIAS_STATIONS.find(
-    n => rows.reduce((k,r) => k + (r.station === n ? 1 : 0), 0) >= BIAS_MIN_TOTAL);
+  const station = BIAS_STATIONS.find(n => rows.some(r => r.station === n));
   if (!station) return null;
 
   const mine = rows.filter(r => r.station === station);
-  const cap = v => v == null ? null : Math.max(-BIAS_CAP, Math.min(BIAS_CAP, v));
+  const cap = v => Math.max(-BIAS_CAP, Math.min(BIAS_CAP, v));
 
   const byHour = {};
   mine.forEach(r => { (byHour[r.hour] = byHour[r.hour] || []).push(r.diff); });
-  const perHour = {};
+
+  const perHour = {}, perHourN = {};
   Object.keys(byHour).forEach(h => {
-    if (byHour[h].length >= BIAS_MIN_HOUR) perHour[h] = cap(median(byHour[h]));
+    if (byHour[h].length >= BIAS_MIN_HOUR){
+      perHour[h] = cap(median(byHour[h]));
+      perHourN[h] = byHour[h].length;
+    }
   });
 
-  // Stunden ohne eigene Stichprobe bekommen den Gesamtmedian – besser als gar
-  // keine Korrektur, aber sichtbar gröber.
-  const fallback = cap(median(mine.map(r => r.diff)));
+  // Keine einzige Stunde geeicht = keine Korrektur. Lieber der ehrliche Rohwert
+  // als eine Zahl, die "korrigiert" heißt und keine ist.
+  if (!Object.keys(perHour).length) return null;
+
   return {
-    station, n: mine.length, perHour, fallback,
-    delta: h => perHour[h] != null ? perHour[h] : fallback,
+    station, n: mine.length, perHour, perHourN,
+    // Ungeeichte Stunden bekommen 0, laufen also unverändert durch.
+    delta: h => perHour[h] != null ? perHour[h] : 0,
+    hat:   h => perHour[h] != null,
   };
 }
 
@@ -647,6 +669,11 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
         : null;
       return {
         t, hl,
+        // Solange nur ein Teil der Stunden geeicht ist, stehen korrigierte und
+        // rohe Werte nebeneinander und der Übergang sieht aus wie ein Sprung im
+        // Wind. Deshalb wird er markiert statt geglättet – geglättet wäre wieder
+        // der tageszeitfremde Mittelwert, den wir gerade losgeworden sind.
+        geeicht: corr ? corr.hat(h) : false,
         wind: wCorr,
         gust: gCorr,
         dir:  leadDr ? leadDr[i] : null,
@@ -667,11 +694,16 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
       windAvg,
       gustMax,
       windDir:  peakDir,
-      // Korrektur-Herkunft, damit die Karte offenlegt, woher die Zahl kommt
+      // Korrektur-Herkunft, damit die Karte offenlegt, woher die Zahl kommt.
+      // biasDelta bleibt null, wenn ausgerechnet die Spitzenstunde noch nicht
+      // geeicht ist – dann steht auch kein "korrigiert" an der Zahl.
       peakRaw:      corr ? peakRaw : null,
-      biasDelta:    (corr && peakHour != null) ? corr.delta(peakHour) : null,
+      biasDelta:    (corr && peakHour != null && corr.hat(peakHour)) ? corr.delta(peakHour) : null,
+      biasPeakN:    (corr && peakHour != null) ? corr.perHourN[peakHour] : null,
       biasStation:  corr ? corr.station : null,
-      biasN:        corr ? corr.n : null,
+      // Wie viele Fensterstunden schon geeicht sind – macht den Fortschritt sichtbar
+      biasGeeicht:  corr ? wi.filter(i => corr.hat(+wTimes[i].slice(11,13))).length : null,
+      biasStunden:  wi.length,
       spreadMin: peaks.length ? Math.min(...peaks) : null,
       spreadMax: peaks.length ? Math.max(...peaks) : null,
       perSource,
@@ -744,7 +776,9 @@ function renderNowcast(nc){
 function render(days, live, nowcast){
   const fmt1 = v => v==null ? "–" : v.toFixed(1);
   const fmt0 = v => v==null ? "–" : Math.round(v).toString();
-  const fmtSigned = v => v==null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(1);
+  // Komma statt Punkt: Die einzige Stelle in der App mit Nachkommastelle im Wind.
+  const fmtSigned = v => v==null ? "–"
+    : (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(1).replace(".", ",");
 
   let html = renderLive(live) + renderNowcast(nowcast) + '<div class="cards">';
   days.forEach((d, idx) => {
@@ -776,7 +810,7 @@ function render(days, live, nowcast){
     const hlc = h => h.hl ? ' class="hl"' : "";
     const stripRows = [
       ["Uhr",   d.hours.map(h=>`<th${hlc(h)}>${h.t.slice(11,13)}</th>`).join("")],
-      ["Wind",  d.hours.map(h=>`<td${hlc(h)}><b>${fmt0(h.wind)}</b></td>`).join("")],
+      ["Wind",  d.hours.map(h=>`<td class="${h.hl?"hl ":""}${h.geeicht?"geeicht":""}"><b>${fmt0(h.wind)}</b></td>`).join("")],
       ["Böen",  d.hours.map(h=>`<td${hlc(h)}>${fmt0(h.gust)}</td>`).join("")],
       ["Richt.",d.hours.map(h=>`<td${hlc(h)}><span class="${windQuality(h.dir).cls}" title="${windQuality(h.dir).label}">${dirName(h.dir)}</span></td>`).join("")],
       ["Welle", d.hours.map(h=>`<td${hlc(h)}>${fmt1(h.wave)}</td>`).join("")],
@@ -800,8 +834,8 @@ function render(days, live, nowcast){
             <div class="chance-bar"><i style="width:${Math.max(2, d.ens.chance)}%"></i></div>
             <div class="chance-sub">${fmt0(d.ens.p10)}–${fmt0(d.ens.p90)} kn in 80 % der Läufe<br>${d.ens.n} × ICON-EU-EPS · 13 km</div>
           </div>` : ""}
-          ${d.biasDelta != null ? `<div class="sub bias">korrigiert ${fmtSigned(d.biasDelta)} kn · Modell roh ${fmt0(d.peakRaw)} kn<br>aus ${d.biasN} Messungen · ${d.biasStation}</div>` : ""}
-          <div class="sub spread${spreadWarn ? " spread-warn" : ""}">Modelle ${d.biasDelta != null ? "roh " : ""}${fmt0(d.spreadMin)}–${fmt0(d.spreadMax)} kn${
+          ${d.biasDelta != null ? `<div class="sub bias">korrigiert ${fmtSigned(d.biasDelta)} kn · Modell roh ${fmt0(d.peakRaw)} kn<br>aus ${d.biasPeakN} Messungen um ${String(d.peakHour).padStart(2,"0")} Uhr · ${d.biasGeeicht}/${d.biasStunden} Fensterstunden geeicht</div>` : ""}
+          <div class="sub spread${spreadWarn ? " spread-warn" : ""}">Modelle ${d.biasGeeicht ? "roh " : ""}${fmt0(d.spreadMin)}–${fmt0(d.spreadMax)} kn${
             spreadWarn ? " · unsicher" : ""}</div>
         </div>
         <div class="stat">
@@ -814,7 +848,9 @@ function render(days, live, nowcast){
       </div>
       <div class="strip-wrap">
         <div class="lab">Stundenverlauf${d.hours.some(h=>h.hl)
-          ? ` <span class="hl-hint">■ ${d.winStart}–${d.winEnd} Uhr</span>` : ""}</div>
+          ? ` <span class="hl-hint">■ ${d.winStart}–${d.winEnd} Uhr</span>` : ""}${
+          d.hours.some(h=>h.geeicht)
+          ? ` <span class="geeicht-hint">_ geeicht</span>` : ""}</div>
         <div class="strip"><table class="hours">${stripRows}</table></div>
       </div>
       <div class="sources">
@@ -849,12 +885,14 @@ async function load(){
     const lead = days[0] ? days[0].leadName : "–";
     const leadRes = days[0] ? days[0].leadRes : "";
     const nWind = days[0] ? days[0].perSource.length : 0;
-    const bias = days.find(d => d.biasDelta != null);
+    const bias = days.find(d => d.biasGeeicht);
     document.getElementById("foot").textContent =
       (bias
-        ? `Die große Zahl ist am Standort nachkalibriert: Aus ${bias.biasN} eigenen Messpaaren `
+        ? `Die große Zahl ist am Standort nachkalibriert: Aus eigenen Messpaaren `
           + `(${bias.biasStation}) wird je Tagesstunde bestimmt, wie weit AROME HD danebenliegt, `
-          + `und der Modellwert entsprechend verschoben. Die Auswertung im September 2026 ergab: `
+          + `und der Modellwert entsprechend verschoben. Eine Stunde wird erst korrigiert, wenn `
+          + `sie selbst genug Messpaare hat – ungeeichte Stunden bleiben roh, statt einen `
+          + `tageszeitfremden Mittelwert zu bekommen. Die Auswertung im September 2026 ergab: `
           + `nachmittags rechnet das Modell 3–5 kn ZU HOCH, nicht zu niedrig. Die Böe wandert um `
           + `denselben Betrag mit, ihr Aufschlag über den Wind bleibt also der des Modells. `
           + `Korrigiert wird nur, solange AROME HD führt: Die Abweichung wurde gegen dieses eine `
