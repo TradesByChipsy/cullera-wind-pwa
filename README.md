@@ -51,6 +51,7 @@ data/observations.json            aktuelle Messung (vom Job geschrieben)
 data/messreihe.csv                Messung + AROME, Grundlage der Bias-Korrektur
 data/prognosereihe.csv            alle Modelle je Stunde, für die Modellauswertung
 data/aemet.json                   AEMET-Vorhersage (nur mit hinterlegtem Schlüssel)
+data/bias.json                    fertig gerechnete Bias-Korrektur, die die App liest
 ```
 
 ---
@@ -201,9 +202,57 @@ Kosten: keine. Das Repo ist öffentlich, damit sind die Actions-Minuten auf den
 Standard-Runnern kostenlos. Auf einem privaten Repo wäre dieser Entwurf falsch —
 er würde das Monatskontingent in wenigen Tagen aufbrauchen.
 
-Wer den Takt wirklich auf die Minute genau braucht, müsste von außen anstoßen:
-ein freier Cron-Dienst, der die `workflow_dispatch`-Schnittstelle aufruft. Das
-kostet ein Token als Repo-Secret und einen Account mehr — dafür kommt jeder Lauf.
+### Der Anstoß von außen
+
+Die Schleife löst nur das halbe Problem: Sie hält durch, sobald sie einmal
+gestartet ist. Ob sie überhaupt startet, entscheidet weiter GitHub — und am
+11.09.2026 kam der erste Lauf des Tages erst um 09:21 UTC, also 11:21 Ortszeit.
+Der ganze Vormittag fehlte in der Messreihe.
+
+Das lässt sich von innen nicht reparieren. Deshalb stößt ein externer
+Cron-Dienst den Workflow stündlich an; GitHubs eigener Zeitplan bleibt als
+Rückfall bestehen. Trifft ein Anstoß ein, während noch ein Lauf läuft, löst der
+neue den alten ab (`cancel-in-progress`) — es verdoppelt sich also nichts.
+
+**Einrichtung (einmalig):**
+
+1. **Token erzeugen.** GitHub → *Settings → Developer settings → Personal access
+   tokens → Fine-grained tokens → Generate new token*
+   - Repository access: **nur** `TradesByChipsy/cullera-wind-pwa`
+   - Permissions → Repository permissions → **Actions: Read and write**
+   - Alles andere auf „No access" lassen. Ablaufdatum notieren — danach bleiben
+     die Anstöße aus und nur noch GitHubs eigener Zeitplan greift.
+
+2. **Cron-Dienst einrichten,** z. B. [cron-job.org](https://cron-job.org)
+   (kostenlos). Neuen Job anlegen mit:
+
+   | Feld | Wert |
+   |---|---|
+   | URL | `https://api.github.com/repos/TradesByChipsy/cullera-wind-pwa/actions/workflows/messwerte.yml/dispatches` |
+   | Methode | `POST` |
+   | Zeitplan | stündlich zur Minute 0, **05–19 Uhr UTC** |
+   | Header | `Accept: application/vnd.github+json` |
+   | Header | `Authorization: Bearer DEIN_TOKEN` |
+   | Header | `X-GitHub-Api-Version: 2022-11-28` |
+   | Header | `Content-Type: application/json` |
+   | Body | `{"ref":"master"}` |
+
+   Erfolg ist **HTTP 204** ohne Inhalt. 401 heißt falsches Token, 403 fehlende
+   Actions-Berechtigung, 404 falscher Pfad oder Token ohne Zugriff auf das Repo.
+
+**Achtung bei der Zeitzone:** Viele Cron-Dienste stellen standardmäßig auf die
+Ortszeit des Kontos. 05–19 Uhr müssen **UTC** sein, sonst verschiebt sich im
+Sommer alles um zwei Stunden.
+
+Der Token gehört **nur** in den Cron-Dienst — nicht ins Repo, nicht in eine Datei
+und nicht in einen Chat. Er darf für dieses Repo Workflows starten; wer ihn hat,
+kann das auch.
+
+**Prüfen, ob es greift:** Im Actions-Tab steht bei jedem Lauf, wer ihn gestartet
+hat — `workflow_dispatch` kommt vom Cron-Dienst, `schedule` von GitHub selbst.
+Kommen stündlich `workflow_dispatch`-Läufe, funktioniert es. Am Tag darauf sollte
+`data/prognosereihe.csv` dann eine lückenlose Stundenreihe ab 07:00 Ortszeit
+enthalten; vorher begann sie oft erst mittags.
 
 ---
 
@@ -265,10 +314,17 @@ nebeneinander (`zeit,station,gemessen_kn,grad,arome_kn`). Zeilen werden nach
 (Zeit, Station) entdoppelt — sonst bekämen stagnante Phasen und Sensorausfälle
 doppeltes Gewicht und würden das Ergebnis Richtung Flaute ziehen.
 
-**Die App liest diese Datei bei jedem Laden und korrigiert die angezeigte Zahl
-damit selbst.** Je Tagesstunde wird der Median aus (gemessen − prognostiziert)
-gebildet und auf den Modellwert addiert. Median statt Mittel, weil ein einzelner
-hängender Sensor ein Mittel über acht Werte spürbar verzieht.
+**Gerechnet wird im Actions-Job, nicht in der App.** Je Tagesstunde bildet
+`rechne_bias()` den Median aus (gemessen − prognostiziert) und legt das Ergebnis
+als `data/bias.json` ab — gut ein Kilobyte. Median statt Mittel, weil ein
+einzelner hängender Sensor ein Mittel über acht Werte spürbar verzieht.
+
+Vorher lud die App dafür bei jedem Öffnen die komplette `messreihe.csv`. Die
+wächst um rund 7 KB am Tag; nach einem Jahr wären das über 2 MB bei jedem Start,
+auf dem Handy — wovon die App nur die Marenyet-Zeilen überhaupt braucht.
+`bias.json` trägt bewusst **keinen** Zeitstempel: Der Job läuft alle 15 Minuten,
+ein sich ständig ändernder Zeitstempel hätte im Viertelstundentakt Commits
+ausgelöst, ohne dass sich eine Zahl geändert hätte.
 
 **Die Altdaten zählen dafür nicht mit.** Die 460 Zeilen bis zum 10.09.2026 stammen
 von Faro und San Antonio und wurden gegen den alten Prognosepunkt geschrieben —

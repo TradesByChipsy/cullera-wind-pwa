@@ -263,8 +263,6 @@ const WAVE_MODELS = [
 // Die Korrektur wird bei jedem Laden neu aus der CSV gerechnet und wird damit
 // von allein besser, je länger der Job läuft.
 const BIAS_MODEL_ID   = "meteofrance_arome_france_hd"; // nur dieses Modell wurde vermessen
-const BIAS_MIN_HOUR   = 8;   // weniger Paare in einer Stunde = zu zufällig
-const BIAS_CAP        = 8;   // kn – Deckel gegen hängende Sensoren und Ausreißer
 // Es gibt bewusst KEINE Gesamtschwelle und keinen tageszeitübergreifenden
 // Rückfallwert. Eine frühere Fassung schaltete ab 30 Paaren insgesamt scharf und
 // gab Stunden ohne eigene Stichprobe den Median über ALLE Stunden. Die echten
@@ -276,15 +274,6 @@ const BIAS_CAP        = 8;   // kn – Deckel gegen hängende Sensoren und Ausre
 // und damit in beiden Tageshälften falsch — er hätte um 21 Uhr −0,2 statt −5,0
 // korrigiert und dabei "korrigiert" ins Kartenfeld geschrieben. Also: Jede Stunde
 // wird nur mit ihrer EIGENEN Stichprobe korrigiert, alle anderen bleiben roh.
-// Referenzstation: NUR Marenyet – dort wird gefoilt, dorthin muss die Zahl passen.
-// Faro als Übergangslösung wurde verworfen: Die beiden Stationen verhalten sich
-// nicht proportional zueinander. Am 10.09. maß der Faro um 15:30 Uhr 7,0 kn gegen
-// 5,2 kn am Marenyet, um 16:50 Uhr aber nur noch 4,0 gegen 10,0 kn. Eine an Faro
-// geeichte Korrektur hätte an diesem Nachmittag rund 4 kn angezeigt, während am
-// Strand 10 kn standen – genau der Fehler vom 15.08., nur mit neuer Mechanik.
-// Solange keine Stunde genug Paare hat, zeigt die App den Rohwert wie bisher.
-// Die Korrektur schaltet sich dann Stunde für Stunde von selbst zu.
-const BIAS_STATIONS = ["Cullera Marenyet"];
 
 // Ensemble statt Einzelwert: ICON-EU-EPS rechnet denselben Tag 40-mal mit leicht
 // gestörten Startbedingungen. Aus der Streuung der 40 Läufe wird eine
@@ -320,11 +309,6 @@ const circMean = degs => {
   let x=0, y=0;
   s.forEach(d => { const r = d*Math.PI/180; x += Math.cos(r); y += Math.sin(r); });
   return ((Math.atan2(y,x)*180/Math.PI)+360)%360;
-};
-const median = a => {
-  if (!a.length) return null;
-  const s = [...a].sort((x,y)=>x-y), m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
 };
 const dirName = d => {
   if (d == null) return "?";
@@ -363,44 +347,27 @@ function seriesFor(hourly, base, modelId, modelCount){
 // Spalten: zeit,station,gemessen_kn,grad,arome_kn
 // Der Median statt des Mittels ist Absicht: eine einzelne hängende Böe oder ein
 // Sensoraussetzer würde ein Mittel über acht Werte spürbar verziehen.
-function buildBias(text){
-  if (!text) return null;
-  const lines = text.trim().split(/\r?\n/);
-  if (lines.length < 2) return null;
-
-  const rows = [];
-  for (let i = 1; i < lines.length; i++){
-    const c = lines[i].split(",");
-    if (c.length < 5) continue;
-    const gemessen = parseFloat(c[2]), prognose = parseFloat(c[4]);
-    if (!isFinite(gemessen) || !isFinite(prognose)) continue;
-    rows.push({hour: +c[0].slice(11,13), station: c[1], diff: gemessen - prognose});
-  }
-  if (!rows.length) return null;
-
-  const station = BIAS_STATIONS.find(n => rows.some(r => r.station === n));
-  if (!station) return null;
-
-  const mine = rows.filter(r => r.station === station);
-  const cap = v => Math.max(-BIAS_CAP, Math.min(BIAS_CAP, v));
-
-  const byHour = {};
-  mine.forEach(r => { (byHour[r.hour] = byHour[r.hour] || []).push(r.diff); });
+function buildBias(daten){
+  if (!daten || !daten.stunden || typeof daten.stunden !== "object") return null;
 
   const perHour = {}, perHourN = {};
-  Object.keys(byHour).forEach(h => {
-    if (byHour[h].length >= BIAS_MIN_HOUR){
-      perHour[h] = cap(median(byHour[h]));
-      perHourN[h] = byHour[h].length;
-    }
-  });
+  for (const [h, v] of Object.entries(daten.stunden)){
+    // typeof-Prüfung ist nötig: isFinite(null) ist in JavaScript true, weil null
+    // vorher zu 0 wird. Ein fehlender Wert käme sonst als Korrektur um 0 kn
+    // durch und die Stunde gälte fälschlich als geeicht.
+    if (!v || typeof v.kn !== "number" || !isFinite(v.kn)) continue;
+    perHour[h] = v.kn;
+    perHourN[h] = v.n;
+  }
 
   // Keine einzige Stunde geeicht = keine Korrektur. Lieber der ehrliche Rohwert
   // als eine Zahl, die "korrigiert" heißt und keine ist.
   if (!Object.keys(perHour).length) return null;
 
   return {
-    station, n: mine.length, perHour, perHourN,
+    station: daten.station || "Messstation",
+    modell: daten.modell || BIAS_MODEL_ID,
+    perHour, perHourN,
     // Ungeeichte Stunden bekommen 0, laufen also unverändert durch.
     delta: h => perHour[h] != null ? perHour[h] : 0,
     hat:   h => perHour[h] != null,
@@ -423,10 +390,12 @@ async function fetchAll(){
   // AVAMET direkt abzufragen geht nicht – die Seite schickt keine CORS-Header.
   // Fehlt die Datei oder ist sie kaputt, läuft die Prognose ohne sie weiter.
   const obs = getJSON("data/observations.json?t=" + Date.now()).catch(() => null);
-  // Messreihe für die Bias-Korrektur. Fehlt sie oder ist sie noch zu kurz,
-  // zeigt die App eben den Rohwert – nie ein Grund, den Ladevorgang abzubrechen.
-  const reihe = fetch("data/messreihe.csv?t=" + Date.now())
-    .then(r => r.ok ? r.text() : null).catch(() => null);
+  // Fertig gerechnete Bias-Korrektur. Die Rechnung steckt im Actions-Job, nicht
+  // hier: Früher lud die App dafür die komplette messreihe.csv – die wächst um
+  // rund 7 KB am Tag und wäre nach einem Jahr bei jedem Start über 2 MB gewesen.
+  // bias.json bleibt bei gut einem Kilobyte. Fehlt die Datei oder ist noch keine
+  // Stunde geeicht, zeigt die App den Rohwert – nie ein Grund abzubrechen.
+  const reihe = getJSON("data/bias.json?t=" + Date.now()).catch(() => null);
 
   // Ensemble, Nowcast und AEMET sind Zusatzquellen: Jede fällt für sich aus,
   // ohne die Prognose mitzureißen. Deshalb einzeln abgefangen statt im
@@ -515,7 +484,6 @@ function ensembleFor(ensemble, dateStr, h0, h1){
   return {
     n: spitzen.length,
     p10: q(0.1),
-    median: median(spitzen),
     p90: q(0.9),
     chance: Math.round(100 * spitzen.filter(v => v >= WING_MIN).length / spitzen.length),
   };
@@ -534,7 +502,7 @@ function aemetFor(aemet, dateStr, h0, h1){
   const beste = treffer.find(s => s.kn === peak);
   // grad, nicht das Kürzel: AEMET liefert spanische Rosenkürzel, in denen O für
   // Westen steht. Die Umrechnung passiert im Abrufskript, hier kommt schon Grad an.
-  return {peak, stunde: +beste.zeit.slice(11,13), grad: beste.grad, n: treffer.length};
+  return {peak, stunde: +beste.zeit.slice(11,13), grad: beste.grad};
 }
 
 // ---------- Aggregation ----------
@@ -713,7 +681,6 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
       waveP:    waveLead ? waveLead.p : null,
       waveDir:  waveLead ? waveLead.dir : null,
       waveLeadName: waveLead ? waveLead.name : null,
-      waveSourceCount: waveSources.length,
       hours,
     };
   });

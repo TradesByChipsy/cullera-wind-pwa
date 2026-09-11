@@ -31,14 +31,13 @@ function schnipsel(muster, name) {
 }
 
 const code = [
-  schnipsel(/const BIAS_MODEL_ID[\s\S]*?const BIAS_STATIONS = \[[^\]]*\];/, "BIAS-Konstanten"),
+  schnipsel(/const BIAS_MODEL_ID[^\n]*\n/, "BIAS_MODEL_ID"),
   schnipsel(/const ENSEMBLE_MODEL[\s\S]*?const NOWCAST_MODELS = \[[\s\S]*?\];/, "Nowcast-Konstanten"),
-  schnipsel(/const median = a => \{[\s\S]*?\n\};/, "median"),
-  schnipsel(/function buildBias\(text\)\{[\s\S]*?\n\}\n/, "buildBias"),
+  schnipsel(/function buildBias\(daten\)\{[\s\S]*?\n\}\n/, "buildBias"),
   schnipsel(/function buildNowcast\(raw\)\{[\s\S]*?\n\}\n/, "buildNowcast"),
   schnipsel(/function ensembleFor\([\s\S]*?\n\}\n/, "ensembleFor"),
   schnipsel(/function aemetFor\([\s\S]*?\n\}\n/, "aemetFor"),
-].join("\n") + "\nexport {buildBias, buildNowcast, ensembleFor, aemetFor, BIAS_MIN_HOUR};";
+].join("\n") + "\nexport {buildBias, buildNowcast, ensembleFor, aemetFor};";
 
 const m = await import("data:text/javascript," + encodeURIComponent(code));
 
@@ -50,44 +49,40 @@ const pruefe = (name, ist, soll) => {
 };
 
 // ---------------------------------------------------------------- buildBias
-// Baut eine Messreihe mit n Paaren zur Stunde h, jeweils mit Abweichung diff.
-function csv(...gruppen) {
-  const zeilen = ["zeit,station,gemessen_kn,grad,arome_kn"];
-  for (const {h, n, diff, station = "Cullera Marenyet"} of gruppen)
-    for (let i = 0; i < n; i++)
-      zeilen.push(`2026-09-${String(10 + i % 20).padStart(2, "0")}T${String(h).padStart(2, "0")}:0${i % 6}+02:00,` +
-        `${station},${(10 + diff).toFixed(1)},120,10.0`);
-  return zeilen.join("\n");
-}
-
+// Die App rechnet den Bias nicht mehr selbst – sie liest data/bias.json, das der
+// Actions-Job fertig ablegt (siehe rechne_bias in messwerte.py, dort getestet).
+// Hier wird nur geprueft, dass die App die Datei richtig auslegt und jede
+// kaputte Form ueberlebt.
 console.log("buildBias:");
 pruefe("null", m.buildBias(null), null);
-pruefe("leerer Text", m.buildBias(""), null);
-pruefe("nur Kopfzeile", m.buildBias("zeit,station,gemessen_kn,grad,arome_kn"), null);
-pruefe("kaputte Zeilen", m.buildBias("zeit,station,gemessen_kn,grad,arome_kn\nmüll\n,,,,\n"), null);
-pruefe("leere arome-Spalte",
-  m.buildBias("zeit,station,gemessen_kn,grad,arome_kn\n2026-09-10T19:00+02:00,Cullera Marenyet,8,256,\n"), null);
-pruefe("falsche Station wird ignoriert",
-  m.buildBias(csv({h: 19, n: 40, diff: -5, station: "Cullera Faro"})), null);
-pruefe("zu wenige Paare in der Stunde",
-  m.buildBias(csv({h: 19, n: m.BIAS_MIN_HOUR - 1, diff: -5})), null);
+pruefe("leeres Objekt", m.buildBias({}), null);
+pruefe("stunden fehlt", m.buildBias({station: "X"}), null);
+pruefe("stunden ist kein Objekt", m.buildBias({stunden: "kaputt"}), null);
+pruefe("stunden leer -> keine Korrektur", m.buildBias({stunden: {}}), null);
+pruefe("Eintrag ohne Zahl wird verworfen",
+  m.buildBias({stunden: {"19": {kn: null, n: 9}}}), null);
+pruefe("Eintrag mit Text statt Zahl wird verworfen",
+  m.buildBias({stunden: {"19": {kn: "viel", n: 9}}}), null);
 
-// Der Kern des Ganzen: Eine Stunde mit genug Paaren wird korrigiert, eine ohne
-// bleibt roh. Frueher bekam sie den Median ueber alle Stunden – bei +4,5 kn
-// vormittags und -5 kn abends ist der in beiden Haelften falsch.
-const b = m.buildBias(csv({h: 19, n: 10, diff: -5}, {h: 12, n: 3, diff: +4}));
-pruefe("Stunde mit genug Paaren wird geeicht", b.hat(19), true);
-pruefe("... und liefert den Median der Stunde", b.delta(19), -5);
-pruefe("Stunde mit zu wenigen Paaren bleibt ungeeicht", b.hat(12), false);
-pruefe("... und wird NICHT verschoben", b.delta(12), 0);
-pruefe("unbekannte Stunde bleibt ungeeicht", b.hat(3), false);
-pruefe("... und wird NICHT verschoben", b.delta(3), 0);
-pruefe("Referenzstation benannt", b.station, "Cullera Marenyet");
+// Der Kern des Ganzen: Nur Stunden aus der Datei werden verschoben, alle
+// anderen laufen unveraendert durch. Frueher bekamen sie den Median ueber alle
+// Stunden – bei +4,5 kn vormittags und -5 kn abends ist der in beiden Haelften
+// falsch und taeuscht eine Eichung vor, die nicht stattgefunden hat.
+const b = m.buildBias({
+  station: "Cullera Marenyet",
+  modell: "meteofrance_arome_france_hd",
+  stunden: {"19": {kn: -5, n: 10}, "12": {kn: 4.5, n: 8}},
+});
+pruefe("Stunde aus der Datei ist geeicht", b.hat(19), true);
+pruefe("... und liefert ihren eigenen Wert", b.delta(19), -5);
+pruefe("zweite Stunde mit eigenem Vorzeichen", b.delta(12), 4.5);
+pruefe("Stunde, die nicht drinsteht, bleibt ungeeicht", b.hat(20), false);
+pruefe("... und wird NICHT verschoben", b.delta(20), 0);
+pruefe("Referenzstation aus der Datei", b.station, "Cullera Marenyet");
+pruefe("Modell aus der Datei", b.modell, "meteofrance_arome_france_hd");
 pruefe("Stichprobengroesse der Stunde", b.perHourN[19], 10);
-
-// Ein hängender Sensor darf die Anzeige nicht um 30 kn verschieben.
-const extrem = m.buildBias(csv({h: 19, n: 10, diff: -40}));
-pruefe("Ausreisser wird auf BIAS_CAP gedeckelt", extrem.delta(19), -8);
+pruefe("Station fehlt -> Platzhalter statt Absturz",
+  m.buildBias({stunden: {"19": {kn: -5, n: 10}}}).station, "Messstation");
 
 // -------------------------------------------------------------- buildNowcast
 console.log("\nbuildNowcast:");
@@ -117,7 +112,6 @@ pruefe("ohne hourly", m.ensembleFor({}, "2026-09-11", 15, 20), null);
 pruefe("Tag nicht enthalten", m.ensembleFor(ens, "2030-01-01", 15, 20), null);
 pruefe("40 Mitglieder erkannt", m.ensembleFor(ens, "2026-09-11", 15, 20).n, 40);
 pruefe("Chance = Anteil ueber der Schwelle", m.ensembleFor(ens, "2026-09-11", 15, 20).chance, 60);
-pruefe("Median der Mitgliedsspitzen", m.ensembleFor(ens, "2026-09-11", 15, 20).median, 14.875);
 pruefe("zu wenige Mitglieder -> null", m.ensembleFor(
   {hourly: {time: zeiten, "wind_speed_10m_a": zeiten.map(() => 9), "wind_speed_10m_b": zeiten.map(() => 9)}},
   "2026-09-11", 15, 20), null);

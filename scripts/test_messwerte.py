@@ -48,16 +48,16 @@ print("Richtungen:")
 # Der teuerste Fehler des Projekts wäre, spanische und deutsche Kürzel zu
 # verwechseln: AEMETs O ist Westen, das deutsche O ist Osten. Beide Tabellen
 # liegen in derselben Datei, deshalb hier festgenagelt.
-pruefe("AEMET O ist Westen (Oeste)", mw.AEMET_GRAD["O"], 270)
-pruefe("AEMET SO ist Suedwesten (Suroeste)", mw.AEMET_GRAD["SO"], 225)
-pruefe("AEMET E ist Osten (Este)", mw.AEMET_GRAD["E"], 90)
+pruefe("AEMET O ist Westen (Oeste)", mw.AEMET_GRAD_ES["O"], 270)
+pruefe("AEMET SO ist Suedwesten (Suroeste)", mw.AEMET_GRAD_ES["SO"], 225)
+pruefe("AEMET E ist Osten (Este)", mw.AEMET_GRAD_ES["E"], 90)
 pruefe("deutsches O ist Osten", mw.compass(90), "O")
 pruefe("deutsches SO ist Suedosten", mw.compass(135), "SO")
 pruefe("270 Grad ist im Deutschen W", mw.compass(270), "W")
 pruefe("compass ohne Wert", mw.compass(None), None)
 pruefe("compass rechnet ueber 360 hinaus", mw.compass(361), "N")
 pruefe("die beiden Tabellen sind NICHT deckungsgleich",
-       mw.AEMET_GRAD["O"] == 90, False)
+       mw.AEMET_GRAD_ES["O"] == 90, False)
 
 # ------------------------------------------------------------- _erste_zahl
 print("\n_erste_zahl:")
@@ -97,8 +97,12 @@ DATEN = [{"nombre": "Cullera", "prediccion": {"dia": [
 def mit_antwort(meta=META, daten=DATEN, key="TEST"):
     os.environ["AEMET_API_KEY"] = key
 
-    def fake(url, timeout=30):
+    def fake(url, timeout=30, headers=None):
+        # Der Schluessel gehoert in die Kopfzeile, nicht in die URL – hier wird
+        # gleich mitgeprueft, dass er auch wirklich dort ankommt.
         if "opendata.aemet.es/opendata/api" in url:
+            assert (headers or {}).get("api_key") == key, "Schluessel fehlt im Header"
+            assert "api_key=" not in url, "Schluessel steht in der URL"
             return json.dumps(meta).encode()
         return json.dumps(daten).encode()
     mw.fetch = fake
@@ -133,7 +137,7 @@ for name, kw in [
 def mit_fehler(exc):
     os.environ["AEMET_API_KEY"] = "TEST"
 
-    def fake(url, timeout=30):
+    def fake(url, timeout=30, headers=None):
         raise exc
     mw.fetch = fake
     return leise(mw.aemet_prognose)
@@ -163,12 +167,50 @@ with tempfile.TemporaryDirectory() as tmp:
         f.write("{kaputt")
     pruefe("kaputte Datei -> neu holen", leise(mw.aemet_ist_frisch), False)
 
+# -------------------------------------------------------------- rechne_bias
+print("\nrechne_bias:")
+
+
+def paare(stunde, anzahl, diff, station=mw.BIAS_STATION):
+    """anzahl Messpaare zur gegebenen Stunde, jeweils mit der Abweichung diff."""
+    return [{"zeit": f"2026-09-{10 + i % 20:02d}T{stunde:02d}:{i * 5 % 60:02d}+02:00",
+             "station": station,
+             "gemessen_kn": f"{10 + diff:.1f}",
+             "arome_kn": "10.0"} for i in range(anzahl)]
+
+
+pruefe("keine Zeilen", mw.rechne_bias([]), {})
+pruefe("fremde Station zaehlt nicht",
+       mw.rechne_bias(paare(19, 40, -5, "Cullera Faro")), {})
+pruefe("unter der Mindestzahl bleibt die Stunde draussen",
+       mw.rechne_bias(paare(19, mw.BIAS_MIN_STUNDE - 1, -5)), {})
+pruefe("genau die Mindestzahl reicht",
+       mw.rechne_bias(paare(19, mw.BIAS_MIN_STUNDE, -5)),
+       {"19": {"kn": -5.0, "n": mw.BIAS_MIN_STUNDE}})
+
+# Der Kern: jede Stunde nur mit ihrer eigenen Stichprobe. Die duenne Stunde
+# bekommt KEINEN Ersatzwert – frueher war das der Median ueber alle Stunden,
+# und der liegt zwischen Vormittagsplus und Abendminus, also in beiden falsch.
+gemischt = mw.rechne_bias(paare(12, 10, +4.5) + paare(19, 10, -5.0) + paare(20, 3, -5.0))
+pruefe("Vormittag mit eigenem Vorzeichen", gemischt["12"]["kn"], 4.5)
+pruefe("Abend mit eigenem Vorzeichen", gemischt["19"]["kn"], -5.0)
+pruefe("duenne Stunde taucht gar nicht auf", "20" in gemischt, False)
+pruefe("kein Sammelwert fuer den Rest", sorted(gemischt), ["12", "19"])
+
+pruefe("Ausreisser wird gedeckelt",
+       mw.rechne_bias(paare(19, 10, -40))["19"]["kn"], -mw.BIAS_CAP)
+pruefe("Median statt Mittel: ein Ausreisser kippt nichts",
+       mw.rechne_bias(paare(19, 9, -2) + paare(19, 1, -40))["19"]["kn"], -2.0)
+pruefe("kaputte Zeilen werden uebersprungen",
+       mw.rechne_bias(paare(19, 8, -3) + [{"zeit": "x", "station": mw.BIAS_STATION,
+                                           "gemessen_kn": "", "arome_kn": ""}])["19"]["n"], 8)
+
 # ---------------------------------------------------------------- Konsistenz
 print("\nKonsistenz:")
 pruefe("Leitmodell ist das erste Modell", mw.LEITMODELL, mw.WIND_MODELS[0])
 pruefe("jedes Modell hat einen Kurznamen",
        sorted(mw.KURZNAME) == sorted(mw.WIND_MODELS), True)
-pruefe("alle 16 Rosenpunkte in AEMET_GRAD", len(mw.AEMET_GRAD), 16)
+pruefe("alle 16 Rosenpunkte in AEMET_GRAD_ES", len(mw.AEMET_GRAD_ES), 16)
 
 print(f"\n{fehler} Test(s) fehlgeschlagen" if fehler else "\nAlle Tests bestanden")
 sys.exit(1 if fehler else 0)

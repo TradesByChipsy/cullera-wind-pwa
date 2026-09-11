@@ -16,6 +16,7 @@ import csv
 import json
 import os
 import re
+import statistics
 import sys
 import urllib.request
 from datetime import datetime, timezone
@@ -92,7 +93,10 @@ AEMET_URL = (
 # Ungeprüft übernommen würde aus ablandigem Westwind auflandiger Ostwind – und
 # damit aus einer Warnung eine Einladung. Deshalb wird hier in Grad übersetzt;
 # die App bildet daraus mit ihrer eigenen Rose die Anzeige.
-AEMET_GRAD = {
+# Das _ES im Namen ist Absicht: compass() unten liefert DEUTSCHE Kürzel mit
+# denselben Buchstaben und gegenteiliger Bedeutung. Wer die beiden Tabellen
+# verwechselt, dreht die Windrichtung um 180 Grad – stumm.
+AEMET_GRAD_ES = {
     "N": 0, "NNE": 22.5, "NE": 45, "ENE": 67.5,
     "E": 90, "ESE": 112.5, "SE": 135, "SSE": 157.5,
     "S": 180, "SSO": 202.5, "SO": 225, "OSO": 247.5,
@@ -108,17 +112,33 @@ AEMET_SCHONFRIST_MIN = 60
 # eigenen Seite verwendet.
 STALE_MINUTES = 45
 
+# Bias-Korrektur: Referenz ist NUR Marenyet – dort wird gefoilt, dorthin muss die
+# Zahl passen. Faro und San Antonio liegen auf bzw. nördlich des Kaps und
+# verhalten sich nicht proportional dazu.
+#
+# Gerechnet wird hier und nicht in der App: Früher lud die App bei jedem Öffnen
+# die komplette messreihe.csv, um daraus den Bias zu bilden. Die Datei wächst um
+# rund 7 KB am Tag – nach einem Jahr wären das über 2 MB bei jedem App-Start, auf
+# dem Handy, wovon die App nur ein Drittel überhaupt braucht. Jetzt legt der Job
+# das fertige Ergebnis als data/bias.json ab, gut ein Kilobyte.
+BIAS_STATION = "Cullera Marenyet"
+BIAS_MIN_STUNDE = 8   # weniger Paare in einer Stunde = zu zufällig
+BIAS_CAP = 8.0        # kn – Deckel gegen hängende Sensoren und Ausreißer
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OBS_PATH = os.path.join(ROOT, "data", "observations.json")
 CSV_PATH = os.path.join(ROOT, "data", "messreihe.csv")
 PROG_PATH = os.path.join(ROOT, "data", "prognosereihe.csv")
 AEMET_PATH = os.path.join(ROOT, "data", "aemet.json")
+BIAS_PATH = os.path.join(ROOT, "data", "bias.json")
 
 KMH_TO_KN = 1.852
 
 
-def fetch(url, timeout=30):
-    req = urllib.request.Request(url, headers={"User-Agent": "cullera-wind-pwa/1.0"})
+def fetch(url, timeout=30, headers=None):
+    kopf = {"User-Agent": "cullera-wind-pwa/1.0"}
+    kopf.update(headers or {})
+    req = urllib.request.Request(url, headers=kopf)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
@@ -245,7 +265,9 @@ def aemet_prognose():
         print("  AEMET: kein Schlüssel gesetzt, übersprungen")
         return None
     try:
-        meta = json.loads(fetch(f"{AEMET_URL}?api_key={key}"))
+        # Schlüssel als Kopfzeile, nicht als Query-Parameter: In der URL landet er
+        # sonst in AEMETs Zugriffsprotokollen und in jedem Proxy dazwischen.
+        meta = json.loads(fetch(AEMET_URL, headers={"api_key": key}))
         if meta.get("estado") != 200 or not meta.get("datos"):
             print(f"  AEMET: {meta.get('descripcion', 'unerwartete Antwort')}")
             return None
@@ -254,10 +276,33 @@ def aemet_prognose():
         print(f"  AEMET übersprungen ({e})")
         return None
 
-    # Struktur: [ { "prediccion": { "dia": [ { "fecha": …,
-    #   "vientoAndRachaMax": [ {"direccion":["E"],"velocidad":["10"],"periodo":"08"},
-    #                          {"value":"25","periodo":"08"} ] } ] } } ]
-    # Einträge mit direccion/velocidad sind der Wind, die mit value die Böe.
+    stunden = _aemet_stunden(roh)
+    if stunden is None:
+        return None
+    if not stunden:
+        print("  AEMET: keine Windstunden in der Antwort")
+        return None
+    print(f"  AEMET: {len(stunden)} Stunden, ab {stunden[0]['zeit'][11:16]}")
+    return {
+        "stand": datetime.now(TZ).isoformat(timespec="minutes"),
+        "quelle": "AEMET OpenData · HARMONIE-AROME 2,5 km, redaktionell geprüft",
+        "gemeinde": "Cullera",
+        "stunden": stunden,
+    }
+
+
+def _aemet_stunden(roh):
+    """Die Windstunden aus AEMETs Antwort herausziehen.
+
+    Struktur: [ { "prediccion": { "dia": [ { "fecha": …,
+      "vientoAndRachaMax": [ {"direccion":["E"],"velocidad":["10"],"periodo":"08"},
+                             {"value":"25","periodo":"08"} ] } ] } } ]
+    Wind und Böe stehen in DERSELBEN Liste, unterschieden nur dadurch, ob
+    "velocidad" oder "value" gesetzt ist.
+
+    Gibt None zurück, wenn die Antwort anders aufgebaut ist als erwartet —
+    unterscheidbar von der leeren Liste, die "aufgebaut wie erwartet, aber keine
+    Windstunden drin" bedeutet."""
     stunden = []
     try:
         for tag in roh[0]["prediccion"]["dia"]:
@@ -272,33 +317,32 @@ def aemet_prognose():
                     }
                 elif e.get("value") not in (None, ""):
                     boeen[p] = _erste_zahl([e["value"]])
-            for p in sorted(wind):
-                w = wind[p]
-                if w["kmh"] is None:
-                    continue
-                # "C" steht für calma – dann gibt es keine Richtung, nur Windstille.
-                grad = AEMET_GRAD.get((w["richtung"] or "").strip().upper())
-                stunden.append({
-                    "zeit": f"{datum}T{p}:00",
-                    "kn": round(w["kmh"] / KMH_TO_KN, 1),
-                    "grad": grad,
-                    "boe_kn": (round(boeen[p] / KMH_TO_KN, 1)
-                               if boeen.get(p) is not None else None),
-                })
+            stunden.extend(_aemet_tag(datum, wind, boeen))
     except Exception as e:
         print(f"  AEMET: Antwort nicht wie erwartet aufgebaut ({e})")
         return None
+    return stunden
 
-    if not stunden:
-        print("  AEMET: keine Windstunden in der Antwort")
-        return None
-    print(f"  AEMET: {len(stunden)} Stunden, ab {stunden[0]['zeit'][11:16]}")
-    return {
-        "stand": datetime.now(TZ).isoformat(timespec="minutes"),
-        "quelle": "AEMET OpenData · HARMONIE-AROME 2,5 km, redaktionell geprüft",
-        "gemeinde": "Cullera",
-        "stunden": stunden,
-    }
+
+def _aemet_tag(datum, wind, boeen):
+    """Die Stunden eines Tages zusammensetzen. Ein Eintrag ohne verwertbare
+    Geschwindigkeit erzeugt gar keine Stunde – lieber eine Lücke als ein
+    erfundener Wert."""
+    raus = []
+    for p in sorted(wind):
+        w = wind[p]
+        if w["kmh"] is None:
+            continue
+        # "C" steht für calma – dann gibt es keine Richtung, nur Windstille.
+        grad = AEMET_GRAD_ES.get((w["richtung"] or "").strip().upper())
+        raus.append({
+            "zeit": f"{datum}T{p}:00",
+            "kn": round(w["kmh"] / KMH_TO_KN, 1),
+            "grad": grad,
+            "boe_kn": (round(boeen[p] / KMH_TO_KN, 1)
+                       if boeen.get(p) is not None else None),
+        })
+    return raus
 
 
 def _erste_zahl(werte):
@@ -360,6 +404,7 @@ def main():
 
     if not neu:
         print("Keine neue Messung seit dem letzten Lauf – Messreihe unverändert.")
+        schreibe_bias()
         return 0
 
     arome = prognosen.get(LEITMODELL, {}).get("kn")
@@ -371,6 +416,9 @@ def main():
             w.writerow([s["gemessen"], s["name"], s["kn_genau"], s["grad"],
                         "" if arome is None else round(arome, 1)])
     print(f"Messreihe: {len(neu)} neue Zeile(n)")
+
+    # Erst jetzt, mit den frischen Zeilen drin.
+    schreibe_bias()
     return 0
 
 
@@ -401,6 +449,64 @@ def schreibe_prognosereihe(stunde, prognosen):
                         "" if v["boe"] is None else round(v["boe"], 1),
                         "" if v["grad"] is None else round(v["grad"])])
     print(f"Prognosereihe: {len(neu)} neue Zeile(n)")
+
+
+def rechne_bias(zeilen):
+    """Aus den Messpaaren je Tagesstunde bestimmen, wie weit AROME danebenliegt.
+
+    `zeilen` sind Dicts aus messreihe.csv. Zurück kommt {stunde: {"kn":…,"n":…}},
+    und zwar NUR für Stunden mit genug eigenen Paaren. Es gibt bewusst keinen
+    tageszeitübergreifenden Rückfallwert: Die echten Marenyet-Daten liegen
+    vormittags bei +4,5 kn und abends bei −5,0 kn, der Median über alles bei
+    −0,2 kn. Der wäre in beiden Tageshälften falsch und würde eine Eichung
+    vortäuschen, die nicht stattgefunden hat.
+
+    Median statt Mittel, weil ein einzelner hängender Sensor ein Mittel über acht
+    Werte spürbar verzieht."""
+    nach_stunde = {}
+    for r in zeilen:
+        if r.get("station") != BIAS_STATION:
+            continue
+        try:
+            diff = float(r["gemessen_kn"]) - float(r["arome_kn"])
+            stunde = int(r["zeit"][11:13])
+        except (KeyError, ValueError, TypeError):
+            continue
+        nach_stunde.setdefault(stunde, []).append(diff)
+
+    raus = {}
+    for stunde, diffs in sorted(nach_stunde.items()):
+        if len(diffs) < BIAS_MIN_STUNDE:
+            continue
+        kn = max(-BIAS_CAP, min(BIAS_CAP, statistics.median(diffs)))
+        raus[str(stunde)] = {"kn": round(kn, 1), "n": len(diffs)}
+    return raus
+
+
+def schreibe_bias():
+    """data/bias.json schreiben – das ist die Datei, die die App liest."""
+    if not os.path.exists(CSV_PATH):
+        return
+    with open(CSV_PATH, encoding="utf-8", newline="") as f:
+        stunden = rechne_bias(list(csv.DictReader(f)))
+
+    # Bewusst OHNE Zeitstempel: Der Job läuft alle 15 Minuten, ein "stand"-Feld
+    # würde sich jedes Mal ändern und damit alle 15 Minuten einen Commit
+    # auslösen, auch wenn sich an den Zahlen nichts getan hat.
+    payload = {
+        "station": BIAS_STATION,
+        "modell": LEITMODELL,
+        "min_pro_stunde": BIAS_MIN_STUNDE,
+        "stunden": stunden,
+    }
+    with open(BIAS_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=1)
+        f.write("\n")
+    if stunden:
+        print("  Bias: " + ", ".join(
+            f"{h}h {v['kn']:+.1f} (n={v['n']})" for h, v in stunden.items()))
+    else:
+        print(f"  Bias: noch keine Stunde mit {BIAS_MIN_STUNDE} Paaren")
 
 
 def aemet_ist_frisch():
