@@ -195,3 +195,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-09-12T19:00,ukmo_global_deterministic_10km,6.4,10.9,123
 2026-09-12T19:00,meteofrance_arpege_europe,7.3,14.8,106
 2026-09-12T19:00,gfs_seamless,9.3,10.9,123
+2026-09-12T20:00,meteofrance_arome_france_hd,7.6,13.0,119
+2026-09-12T20:00,meteofrance_arome_france,7.3,13.2,119
+2026-09-12T20:00,ecmwf_ifs,6.2,15.7,113
+2026-09-12T20:00,icon_eu,6.7,14.6,120
+2026-09-12T20:00,ukmo_global_deterministic_10km,5.4,8.6,135
+2026-09-12T20:00,meteofrance_arpege_europe,6.7,13.0,107
+2026-09-12T20:00,gfs_seamless,6.9,11.3,130
