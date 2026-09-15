@@ -9,9 +9,9 @@
  * dem <script>-Block heraus und lädt sie als Modul. Es wird also der echte
  * Quelltext geprüft, keine Kopie, die auseinanderdriften könnte.
  *
- * Getestet wird nur, was ohne Netz und ohne DOM auskommt: buildBias,
- * buildNowcast, ensembleFor, aemetFor. Alles andere hängt an Open-Meteo oder am
- * Rendering und gehört in einen Durchlauf im Browser.
+ * Getestet wird, was ohne Netz und ohne DOM auskommt: buildBias, buildNowcast,
+ * ensembleFor, aemetFor und der ganze Rechenweg einer Tageskarte (aggregate) mit
+ * nachgebauten API-Antworten. Nur das Rendering bleibt dem Blick in den Browser.
  */
 import fs from "fs";
 import path from "path";
@@ -31,13 +31,19 @@ function schnipsel(muster, name) {
 }
 
 const code = [
+  schnipsel(/const LAT = [\s\S]*?const WAVE_MODELS = \[[\s\S]*?\];/, "Konstanten + sessionWindow"),
+  schnipsel(/const mean = a => \{[\s\S]*?\n\};/, "mean"),
+  schnipsel(/const circMean = degs => \{[\s\S]*?\n\};/, "circMean"),
+  schnipsel(/function seriesFor\([\s\S]*?\n\}\n/, "seriesFor"),
+  schnipsel(/function windowIdx\([\s\S]*?\n\}\n/, "windowIdx"),
+  schnipsel(/function aggregate\([\s\S]*?\n\}\n/, "aggregate"),
   schnipsel(/const BIAS_MODEL_ID[^\n]*\n/, "BIAS_MODEL_ID"),
   schnipsel(/const ENSEMBLE_MODEL[\s\S]*?const NOWCAST_MODELS = \[[\s\S]*?\];/, "Nowcast-Konstanten"),
   schnipsel(/function buildBias\(daten\)\{[\s\S]*?\n\}\n/, "buildBias"),
   schnipsel(/function buildNowcast\(raw\)\{[\s\S]*?\n\}\n/, "buildNowcast"),
   schnipsel(/function ensembleFor\([\s\S]*?\n\}\n/, "ensembleFor"),
   schnipsel(/function aemetFor\([\s\S]*?\n\}\n/, "aemetFor"),
-].join("\n") + "\nexport {buildBias, buildNowcast, ensembleFor, aemetFor};";
+].join("\n") + "\nexport {buildBias, buildNowcast, ensembleFor, aemetFor, aggregate};";
 
 const m = await import("data:text/javascript," + encodeURIComponent(code));
 
@@ -133,6 +139,55 @@ pruefe("Tag ohne Treffer", m.aemetFor(A, "2026-09-13", 15, 20), null);
 pruefe("Spitze im Fenster, 22 Uhr bleibt draussen", m.aemetFor(A, "2026-09-11", 15, 20).peak, 11.9);
 pruefe("Spitzenstunde", m.aemetFor(A, "2026-09-11", 15, 20).stunde, 17);
 pruefe("Richtung als Grad, nicht als Kuerzel", m.aemetFor(A, "2026-09-11", 15, 20).grad, 135);
+
+// ------------------------------------------------------------------ aggregate
+// Der Fall vom 15.09.2026: Die korrigierte Spitze lag um 17 Uhr, der hoechste
+// Rohwert um 18 Uhr. Die Karte muss den Rohwert DER Stunde nennen, deren
+// korrigierter Wert oben steht – sonst geht "roh + Korrektur" nicht auf.
+// Getestet wird der ganze Rechenweg der Karte, nicht nur eine Hilfsfunktion:
+// Genau diese Luecke hat den Fehler bis zum 15.09. durchrutschen lassen.
+console.log();
+console.log("aggregate – Korrekturzeile der Karte:");
+const HD_ID = "meteofrance_arome_france_hd";
+function tagDaten(rohJeStunde, korrekturen) {
+  const time = [], sp = [], gu = [], dr = [];
+  for (let st = 0; st < 24; st++) {
+    time.push(`2026-09-15T${String(st).padStart(2, "0")}:00`);   // Dienstag: Fenster 15–20
+    const v = rohJeStunde[st] ?? 3;
+    sp.push(v); gu.push(v + 5); dr.push(110);
+  }
+  const stunden = Object.fromEntries(
+    Object.entries(korrekturen).map(([h, kn]) => [h, {kn, n: 12}]));
+  return {
+    wind: {hourly: {time, [`wind_speed_10m_${HD_ID}`]: sp,
+                    [`wind_gusts_10m_${HD_ID}`]: gu, [`wind_direction_10m_${HD_ID}`]: dr}},
+    wave: {hourly: {time}},
+    bias: m.buildBias({stunden}),
+    ensemble: null, aemet: null,
+  };
+}
+const rund1 = x => x == null ? x : Math.round(x * 10) / 10;
+const heuteRoh = {15: 9.7, 16: 10.8, 17: 11.3, 18: 13.6, 19: 11.8, 20: 11.5};
+
+const k1 = m.aggregate(tagDaten(heuteRoh,
+  {15: -0.4, 16: -1.0, 17: 0.7, 18: -1.9, 19: -3.2, 20: -4.5}))[0];
+pruefe("korrigierte Spitze 12,0 kn", rund1(k1.windPeak), 12);
+pruefe("... um 17 Uhr, nicht um 18", k1.peakHour, 17);
+pruefe("Korrektur der Spitzenstunde", k1.biasDelta, 0.7);
+pruefe("Rohwert aus DERSELBEN Stunde (11,3 statt 13,6)", k1.peakRaw, 11.3);
+pruefe("roh + Korrektur = angezeigte Spitze", rund1(k1.peakRaw + k1.biasDelta), rund1(k1.windPeak));
+
+// Spitzenstunde ungeeicht: keine Korrektur-Behauptung, Rohwert passt trotzdem
+const k2 = m.aggregate(tagDaten(heuteRoh, {17: 0.7}))[0];
+pruefe("ungeeichte 18-Uhr-Stunde bleibt vorn", k2.peakHour, 18);
+pruefe("... dann keine Korrekturzeile", k2.biasDelta, null);
+pruefe("... und der Rohwert ist der der Spitzenstunde", k2.peakRaw, 13.6);
+
+// ganz ohne Korrektur: kein Rohwert-Hinweis
+const k3 = m.aggregate(tagDaten(heuteRoh, {}))[0];
+pruefe("ohne Korrektur: Spitze = hoechster Rohwert", k3.windPeak, 13.6);
+pruefe("ohne Korrektur: kein peakRaw", k3.peakRaw, null);
+
 
 console.log(fehler ? `\n${fehler} Test(s) fehlgeschlagen` : "\nAlle Tests bestanden");
 process.exit(fehler ? 1 : 0);

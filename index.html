@@ -578,7 +578,12 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
     let peakDir = lead ? lead.peakDir : null;
     let windAvg = lead ? lead.avg : null;
     let gustMax = lead ? lead.gustMax : null;
-    const peakRaw = lead ? lead.peak : null;
+    // Rohwert zur Spitze: Er muss aus DERSELBEN Stunde stammen wie die
+    // korrigierte Spitze, sonst geht die Erklärzeile auf der Karte nicht auf.
+    // Am 15.09.2026 lag die korrigierte Spitze um 17 Uhr (11,3 + 0,7 = 12,0),
+    // der höchste Rohwert aber um 18 Uhr (13,6) – die Karte schrieb
+    // "korrigiert +0,7 kn · Modell roh 14 kn" neben "12 kn".
+    let peakRaw = lead ? lead.peak : null;
     if (corr && leadGu){
       const g = wi.map(i => adj(leadGu[i], +wTimes[i].slice(11,13))).filter(v => v != null);
       if (g.length) gustMax = Math.max(...g);
@@ -592,6 +597,7 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
         peak = best.v;
         peakHour = best.h;
         peakDir = leadDr ? leadDr[best.i] : null;
+        peakRaw = leadSp[best.i];
         windAvg = mean(vals.map(x => x.v));
       }
     }
@@ -743,9 +749,10 @@ function renderNowcast(nc){
 function render(days, live, nowcast){
   const fmt1 = v => v==null ? "–" : v.toFixed(1);
   const fmt0 = v => v==null ? "–" : Math.round(v).toString();
-  // Komma statt Punkt: Die einzige Stelle in der App mit Nachkommastelle im Wind.
+  // Komma statt Punkt – deutsches Zahlenformat für Werte mit Nachkommastelle.
   const fmtSigned = v => v==null ? "–"
     : (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(1).replace(".", ",");
+  const fmtDez = v => v==null ? "–" : v.toFixed(1).replace(".", ",");
 
   let html = renderLive(live) + renderNowcast(nowcast) + '<div class="cards">';
   days.forEach((d, idx) => {
@@ -801,7 +808,7 @@ function render(days, live, nowcast){
             <div class="chance-bar"><i style="width:${Math.max(2, d.ens.chance)}%"></i></div>
             <div class="chance-sub">${fmt0(d.ens.p10)}–${fmt0(d.ens.p90)} kn in 80 % der Läufe<br>${d.ens.n} × ICON-EU-EPS · 13 km</div>
           </div>` : ""}
-          ${d.biasDelta != null ? `<div class="sub bias">korrigiert ${fmtSigned(d.biasDelta)} kn · Modell roh ${fmt0(d.peakRaw)} kn<br>aus ${d.biasPeakN} Messungen um ${String(d.peakHour).padStart(2,"0")} Uhr · ${d.biasGeeicht}/${d.biasStunden} Fensterstunden geeicht</div>` : ""}
+          ${d.biasDelta != null ? `<div class="sub bias">korrigiert ${fmtSigned(d.biasDelta)} kn · Modell roh ${fmtDez(d.peakRaw)} kn<br>aus ${d.biasPeakN} Messungen um ${String(d.peakHour).padStart(2,"0")} Uhr · ${d.biasGeeicht}/${d.biasStunden} Fensterstunden geeicht</div>` : ""}
           <div class="sub spread${spreadWarn ? " spread-warn" : ""}">Modelle ${d.biasGeeicht ? "roh " : ""}${fmt0(d.spreadMin)}–${fmt0(d.spreadMax)} kn${
             spreadWarn ? " · unsicher" : ""}</div>
         </div>
