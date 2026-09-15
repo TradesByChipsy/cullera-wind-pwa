@@ -859,8 +859,9 @@ async function load(){
           + `(${bias.biasStation}) wird je Tagesstunde bestimmt, wie weit AROME HD danebenliegt, `
           + `und der Modellwert entsprechend verschoben. Eine Stunde wird erst korrigiert, wenn `
           + `sie selbst genug Messpaare hat – ungeeichte Stunden bleiben roh, statt einen `
-          + `tageszeitfremden Mittelwert zu bekommen. Die Auswertung im September 2026 ergab: `
-          + `nachmittags rechnet das Modell 3–5 kn ZU HOCH, nicht zu niedrig. Die Böe wandert um `
+          + `tageszeitfremden Mittelwert zu bekommen. Wie weit das Modell danebenliegt, hängt stark von der Tageszeit ab – den `
+          + `Wert für die Spitzenstunde nennt jede Karte. `
+          + `Die Böe wandert um `
           + `denselben Betrag mit, ihr Aufschlag über den Wind bleibt also der des Modells. `
           + `Korrigiert wird nur, solange AROME HD führt: Die Abweichung wurde gegen dieses eine `
           + `Modell gemessen und sagt nichts über ECMWF oder ICON-EU. Deshalb steht in der `
@@ -876,11 +877,13 @@ async function load(){
       + `Die ${nWind} Quellen werden nur zur Streuung ausgewiesen: liegen sie weit auseinander, ist die Prognose unsicher. `
       + `Spitze = höchster Stundenwert im Fenster (Mo–Fr ${SESSION_WEEKDAY[0]}–${SESSION_WEEKDAY[1]} Uhr, `
       + `Sa/So ${SESSION_WEEKEND[0]}–${SESSION_WEEKEND[1]} Uhr), weil ein Tagesmittel die Nachmittagsthermik wegrechnet. `
-      + `Fensterende ${SESSION_WEEKDAY[1]} Uhr: danach ist Sonnenuntergang – und AROME reicht am dritten Tag genau bis dahin. `
+      + `Fensterende ${SESSION_WEEKDAY[1]} Uhr: danach ist Sonnenuntergang. `
+      + `AROME reicht nur bis in den dritten Tag hinein und deckt dessen Nachmittag nicht mehr ab – `
+      + `ab dort führt ECMWF IFS. `
       + "Grün = auflandig (Wind vom Meer, drückt an Land). "
       + "Rot = ablandig (drückt aufs offene Meer – Vorsicht!). "
       + "Prognose: Open-Meteo (CC-BY 4.0). Messwerte: AVAMET (CC BY-NC-ND 4.0), "
-      + "Stationen Cullera Marenyet, Faro und San Antonio, alle 30 Minuten abgeholt. "
+      + "Stationen Cullera Marenyet, Faro und San Antonio, im 15-Minuten-Takt abgeholt. "
       + "Auch 1,5 km bleibt ein Modell – kein Ersatz für den Blick aufs Meer.";
   }catch(e){
     document.getElementById("content").innerHTML =

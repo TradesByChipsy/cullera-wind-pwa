@@ -205,6 +205,36 @@ pruefe("kaputte Zeilen werden uebersprungen",
        mw.rechne_bias(paare(19, 8, -3) + [{"zeit": "x", "station": mw.BIAS_STATION,
                                            "gemessen_kn": "", "arome_kn": ""}])["19"]["n"], 8)
 
+# -------------------------------------------------- Paarung Messung/Prognose
+print("\nPaarung Messung – Prognose:")
+pruefe("stunde_von schneidet auf die volle Stunde",
+       mw.stunde_von("2026-09-15T13:54+02:00"), "2026-09-15T13:00")
+pruefe("stunde_von kurz nach Mitternacht",
+       mw.stunde_von("2026-09-15T00:05+02:00"), "2026-09-15T00:00")
+
+HD = mw.LEITMODELL
+stundenreihe = {
+    "time": ["2026-09-11T11:00", "2026-09-11T12:00"],
+    f"wind_speed_10m_{HD}": [3.3, 1.0],
+    f"wind_gusts_10m_{HD}": [8.4, 8.7],
+    f"wind_direction_10m_{HD}": [298, 338],
+}
+# Der echte Fall vom 11.09.2026: gemessen 11:59, abgeholt 12:02. Richtig ist
+# der 11-Uhr-Wert 3,3 kn – der alte Code nahm den 12-Uhr-Wert 1,0 kn.
+elf = mw.prognosen_fuer(stundenreihe, mw.stunde_von("2026-09-11T11:59+02:00"))
+pruefe("Messung 11:59 bekommt die 11-Uhr-Prognose", elf[HD]["kn"], 3.3)
+pruefe("... die Folgestunde hat einen anderen Wert",
+       mw.prognosen_fuer(stundenreihe, "2026-09-11T12:00")[HD]["kn"], 1.0)
+pruefe("Boe und Richtung kommen mit", elf[HD], {"kn": 3.3, "boe": 8.4, "grad": 298})
+pruefe("Stunde nicht in der Antwort -> leer",
+       mw.prognosen_fuer(stundenreihe, "2026-09-11T13:00"), {})
+pruefe("keine Antwort -> leer", mw.prognosen_fuer(None, "2026-09-11T11:00"), {})
+pruefe("kaputte Antwort -> leer", mw.prognosen_fuer({"x": 1}, "2026-09-11T11:00"), {})
+pruefe("Modell ohne Wert faellt raus",
+       mw.prognosen_fuer({"time": ["2026-09-11T11:00"], f"wind_speed_10m_{HD}": [None]},
+                         "2026-09-11T11:00"), {})
+pruefe("Vorstunden werden mitgeholt (past_days=1)", "past_days=1" in mw.PROGNOSE_URL, True)
+
 # ---------------------------------------------------------------- Konsistenz
 print("\nKonsistenz:")
 pruefe("Leitmodell ist das erste Modell", mw.LEITMODELL, mw.WIND_MODELS[0])

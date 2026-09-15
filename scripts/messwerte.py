@@ -73,7 +73,9 @@ PROGNOSE_URL = (
     f"?latitude={LAT}&longitude={LON}"
     "&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m"
     f"&models={','.join(WIND_MODELS)}"
-    "&wind_speed_unit=kn&forecast_days=1&timezone=Europe%2FMadrid"
+    # past_days=1: Eine Messung kurz nach Mitternacht gehört zur Stunde von
+    # gestern 23 Uhr – die muss in der Antwort noch enthalten sein.
+    "&wind_speed_unit=kn&past_days=1&forecast_days=1&timezone=Europe%2FMadrid"
 )
 
 # AEMET als unabhängige zweite Meinung: Spaniens eigener HARMONIE-AROME-Lauf mit
@@ -223,19 +225,36 @@ def read_station(sid, name):
     }
 
 
-def prognosen_now():
-    """Was sagt jedes Modell für die laufende Stunde? Nur für den Abgleich in den
-    CSVs, nicht für die Anzeige — die App holt ihre Werte selbst.
-
-    Gibt (stunde, {modell: {"kn":…, "boe":…, "grad":…}}) zurück. Bei mehreren
-    Modellen suffixt Open-Meteo die Keys: wind_speed_10m_icon_eu."""
-    stunde = datetime.now(TZ).strftime("%Y-%m-%dT%H:00")
+def hole_prognosen():
+    """Stundenreihen aller Modelle holen – einmal je Lauf, für zwei Zwecke: die
+    Prognosereihe (laufende Stunde) und die Paarung in der Messreihe (Stunde der
+    Messung). None, wenn Open-Meteo nicht antwortet."""
     try:
-        d = json.loads(fetch(PROGNOSE_URL))["hourly"]
-        i = d["time"].index(stunde)
+        return json.loads(fetch(PROGNOSE_URL))["hourly"]
     except Exception as e:
         print(f"  Prognose-Abgleich übersprungen ({e})")
-        return stunde, {}
+        return None
+
+
+def stunde_von(zeitstempel):
+    """Aus "2026-09-15T13:54+02:00" wird "2026-09-15T13:00". Die Messzeit von
+    AVAMET trägt die Ortszeit, die Stundenreihe von Open-Meteo ebenfalls
+    (timezone=Europe/Madrid) – die ersten 13 Zeichen passen also direkt."""
+    return f"{zeitstempel[:13]}:00"
+
+
+def prognosen_fuer(hourly, stunde):
+    """Was sagt jedes Modell für eine bestimmte Stunde ("YYYY-MM-DDTHH:00")?
+
+    Gibt {modell: {"kn":…, "boe":…, "grad":…}} zurück, leer, wenn die Stunde
+    nicht in der Antwort steckt. Bei mehreren Modellen suffixt Open-Meteo die
+    Keys: wind_speed_10m_icon_eu."""
+    if not hourly:
+        return {}
+    try:
+        i = hourly["time"].index(stunde)
+    except (KeyError, ValueError):
+        return {}
 
     out = {}
     for m in WIND_MODELS:
@@ -243,15 +262,13 @@ def prognosen_now():
         for feld, name in (("wind_speed_10m", "kn"),
                            ("wind_gusts_10m", "boe"),
                            ("wind_direction_10m", "grad")):
-            reihe = d.get(f"{feld}_{m}")
+            reihe = hourly.get(f"{feld}_{m}")
             werte[name] = reihe[i] if reihe and i < len(reihe) else None
         # Ein Modell ohne Windwert für diese Stunde ist noch nicht gelaufen oder
         # deckt den Zeitpunkt nicht ab – dann gar nichts schreiben.
         if werte["kn"] is not None:
             out[m] = werte
-    print(f"  Prognosen für {stunde[11:16]}: " +
-          ", ".join(f"{KURZNAME.get(m, m)} {v['kn']:.1f}" for m, v in out.items()))
-    return stunde, out
+    return out
 
 
 def aemet_prognose():
@@ -365,7 +382,12 @@ def main():
     # hängen nicht an AVAMET. Standen sie hinter dem Ausstieg unten, verlor ein
     # AVAMET-Ausfall – bei Amateurstationen der Normalfall – auch die
     # Modellauswertung und die zweite Meinung für dieselbe Stunde.
-    stunde, prognosen = prognosen_now()
+    roh_prognosen = hole_prognosen()
+    stunde = datetime.now(TZ).strftime("%Y-%m-%dT%H:00")
+    prognosen = prognosen_fuer(roh_prognosen, stunde)
+    if prognosen:
+        print(f"  Prognosen für {stunde[11:16]}: " +
+              ", ".join(f"{KURZNAME.get(m, m)} {v['kn']:.1f}" for m, v in prognosen.items()))
     schreibe_prognosereihe(stunde, prognosen)
     schreibe_aemet()
 
@@ -407,12 +429,18 @@ def main():
         schreibe_bias()
         return 0
 
-    arome = prognosen.get(LEITMODELL, {}).get("kn")
     with open(CSV_PATH, "a", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         if not bekannt:
             w.writerow(["zeit", "station", "gemessen_kn", "grad", "arome_kn"])
         for s in neu:
+            # Die Prognose der Stunde, in der GEMESSEN wurde – nicht der, in der
+            # der Job läuft. Vorher bekam eine Messung von 11:59, die der Job um
+            # 12:02 abholte, den 12-Uhr-Wert, landete in der Bias-Rechnung aber
+            # unter 11 Uhr. Am 15.09.2026 betraf das 28 von 203 Paaren (14 %),
+            # gehäuft dort, wo der Wind schnell steigt oder fällt.
+            arome = (prognosen_fuer(roh_prognosen, stunde_von(s["gemessen"]))
+                     .get(LEITMODELL, {}).get("kn"))
             w.writerow([s["gemessen"], s["name"], s["kn_genau"], s["grad"],
                         "" if arome is None else round(arome, 1)])
     print(f"Messreihe: {len(neu)} neue Zeile(n)")
