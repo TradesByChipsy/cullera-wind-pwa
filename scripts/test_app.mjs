@@ -193,12 +193,12 @@ pruefe("ohne Korrektur: Spitze = hoechster Rohwert", k3.windPeak, 13.6);
 pruefe("ohne Korrektur: kein peakRaw", k3.peakRaw, null);
 
 
-// --------------------------------------------- Gegenprobe & Realitaetscheck
-// Am 15.09.2026 zeigte die Karte 11,5 kn, ECMWF sagte 8,9 und ICON-EU 8,3 –
-// gemessen wurden ab 17 Uhr nur 4 bis 5 kn. Beide Pruefmodelle lagen also klar
-// darunter, ohne dass die Streuungswarnung (ab 6 kn Spanne) angeschlagen haette.
+// --------------------------------------------------------- Stundenmatrix
+// Die Matrix ersetzt Kachelblock, Quellenliste und Gegenprobe: Wo die Modelle
+// auseinanderlaufen, sieht man es an den Zahlen. Am 15.09.2026 zeigte die Karte
+// 11,3 kn, ECMWF 8,7 und ICON-EU 8,3 - gemessen wurden ab 17 Uhr 4 bis 5.
 console.log();
-console.log("Gegenprobe der Pruefmodelle:");
+console.log("Stundenmatrix:");
 function tagDrei(arome, ecmwf, icon) {
   const time = [];
   for (let st = 0; st < 24; st++) time.push(`2026-09-15T${String(st).padStart(2, "0")}:00`);
@@ -214,15 +214,26 @@ function tagDrei(arome, ecmwf, icon) {
           bias: null, ensemble: null, aemet: null};
 }
 
-const g1 = m.aggregate(tagDrei({17: 11.3, 18: 13.5}, {17: 8.7, 18: 8.9}, {17: 8.3, 18: 8.1}))[0];
-pruefe("beide Pruefmodelle klar darunter -> Gegenprobe", g1.gegenprobe !== null, true);
-pruefe("... nennt den ECMWF-Wert", g1.gegenprobe?.[0].peak, 8.9);
-pruefe("... nennt den ICON-EU-Wert", g1.gegenprobe?.[1].peak, 8.3);
-const g2 = m.aggregate(tagDrei({17: 11.3}, {17: 10.0}, {17: 8.3}))[0];
-pruefe("nur eines darunter -> keine Gegenprobe", g2.gegenprobe, null);
-const g3 = m.aggregate(tagDrei({17: 8.0}, {17: 9.6}, {17: 11.3}))[0];
-pruefe("Pruefmodelle darueber -> keine Gegenprobe", g3.gegenprobe, null);
+const mx = m.aggregate(tagDrei({17: 11.3, 18: 13.5}, {17: 8.7, 18: 8.9}, {17: 8.3, 18: 8.1}))[0];
+pruefe("vier Modellzeilen", mx.matrix.length, 4);
+pruefe("... in fester Reihenfolge", mx.matrix.map(r => r.name).join(","),
+  "Arome HD,ECMWF,Icon-EU,GFS");
+pruefe("Leitmodell ist markiert", mx.matrix[0].lead, true);
+pruefe("... und nur dieses", mx.matrix.filter(r => r.lead).length, 1);
+// Jede Modellzeile muss Spalte fuer Spalte zu hours passen, sonst stehen die
+// Werte unter der falschen Stunde.
+pruefe("Zeile so lang wie die Stundenreihe",
+  mx.matrix[0].werte.length, mx.hours.length);
+pruefe("Wert steht unter seiner Stunde",
+  mx.matrix[1].werte[mx.hours.findIndex(h => +h.t.slice(11,13) === 17)], 8.7);
+// GFS fehlt in diesen Testdaten - genau wie AROME ab dem dritten Tag.
+pruefe("Modell ohne Daten -> werte null", mx.matrix[3].werte, null);
 
+// Die Leiste beginnt vier Stunden vor dem Fenster (Mo-Fr 15-20 Uhr), nicht
+// pauschal um 8: 13 Spalten sind auf dem Handy mehr Scrollweg als Nutzen.
+pruefe("Leiste startet um 11 Uhr", +mx.hours[0].t.slice(11,13), 11);
+pruefe("... und endet um 20 Uhr", +mx.hours[mx.hours.length-1].t.slice(11,13), 20);
+pruefe("... also zehn Spalten", mx.hours.length, 10);
 console.log();
 console.log("Realitaetscheck im Messpanel:");
 const heuteKarte = m.aggregate(tagDrei({17: 11.0}, {17: 10.5}, {17: 10.6}))[0];
@@ -278,14 +289,18 @@ pruefe("570 Min, gleiches Alter", m.alterText(570), "vor 9 Std");
 
 // Die Stundenzahl allein kennt das Datum nicht: Eine Messung von gestern 09:34
 // kaeme heute um 9 Uhr durch die alte Pruefung. Erst das Alter faengt sie ab.
-const karte9 = m.aggregate(tagDrei({9: 12.0}, {9: 11.5}, {9: 11.6}))[0];
-const st9 = z => ({stationen: [{name: "Cullera Marenyet", kn: 5,
-                                veraltet: false, gemessen: z}]});
+// Stunde 12, weil die Leiste unter der Woche erst um 11 Uhr beginnt.
+const MITTAGS = new Date("2026-09-16T12:04+02:00").getTime();
+const karte12 = m.aggregate(tagDrei({12: 12.0}, {12: 11.5}, {12: 11.6}))[0];
+const st12 = z => ({stationen: [{name: "Cullera Marenyet", kn: 5,
+                                 veraltet: false, gemessen: z}]});
+pruefe("Stunde liegt ueberhaupt in der Leiste",
+  karte12.hours.some(h => +h.t.slice(11,13) === 12), true);
 pruefe("gleiche Stunde, aber von gestern -> kein Hinweis",
-  m.realitaetsCheck(st9("2026-09-15T09:34+02:00"), karte9, 9, MORGENS), null);
+  m.realitaetsCheck(st12("2026-09-15T12:34+02:00"), karte12, 12, MITTAGS), null);
 pruefe("gleiche Stunde und frisch -> Hinweis",
-  m.realitaetsCheck(st9("2026-09-16T09:34+02:00"), karte9, 9,
-    new Date("2026-09-16T09:44+02:00").getTime())?.gemessen, 5);
+  m.realitaetsCheck(st12("2026-09-16T12:34+02:00"), karte12, 12,
+    new Date("2026-09-16T12:44+02:00").getTime())?.gemessen, 5);
 
 
 console.log(fehler ? `\n${fehler} Test(s) fehlgeschlagen` : "\nAlle Tests bestanden");

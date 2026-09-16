@@ -60,7 +60,7 @@
   }
   .live .lab .src{letter-spacing:.04em;text-transform:none;color:#7fa8bd;font-size:9px}
   .live-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:3px 0}
-  .live-row .st{font-size:13px}
+  .live-row .st{font-size:13px;white-space:nowrap}
   .live-row .kn{font-family:'DM Mono',monospace;font-size:17px;font-weight:500}
   .live-row .kn small{font-size:11px;color:#bcd9e6;font-weight:400}
   .live-row .meta{font-family:'DM Mono',monospace;font-size:10.5px;color:#bcd9e6}
@@ -81,27 +81,13 @@
   .day{font-family:'Fraunces',serif;font-size:21px;font-weight:600}
   .date{font-family:'DM Mono',monospace;font-size:11.5px;color:var(--mute)}
 
-  .big{display:grid;grid-template-columns:1.2fr 1fr;gap:10px;margin-top:12px}
-  .stat{background:rgba(6,36,58,.05);border-radius:12px;padding:11px 12px;border:1px solid rgba(6,36,58,.06)}
-  .stat .lab{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--mute)}
-  .stat .val{font-family:'DM Mono',monospace;font-size:30px;font-weight:500;line-height:1.05;margin-top:5px}
-  .stat .val small{font-size:13px;color:var(--mute);font-weight:400}
-  .stat .sub{font-size:12px;color:var(--mute);margin-top:3px}
-  .stat .sub b{color:var(--ink);font-weight:600}
-  .stat .val small.at{font-size:12px;color:var(--mute);font-weight:400;letter-spacing:0}
-  .stat .sub.bias{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--coral-deep);margin-top:4px;line-height:1.45}
-  .stat .sub.warnung{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--coral-deep);margin-top:4px;line-height:1.45}
-  /* Wahrscheinlichkeit aus dem Ensemble – als Balken, weil "68 %" als Zahl
-     allein nicht schneller lesbar ist als die Windspitze darüber. */
-  .chance{margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
-  .chance-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px;color:var(--mute)}
-  .chance-head b{font-family:'DM Mono',monospace;font-size:15px;color:var(--ink);font-weight:600}
-  .chance-bar{height:5px;border-radius:3px;background:var(--line);margin-top:5px;overflow:hidden}
-  .chance-bar i{display:block;height:100%;border-radius:3px;background:var(--gold)}
-  .chance-sub{font-family:'DM Mono',monospace;font-size:10px;color:var(--mute);margin-top:4px;line-height:1.5}
-  .srow-aemet{margin-top:5px;padding-top:7px;border-top:1px solid var(--line)}
-  .zweit-tag{font-family:'DM Mono',monospace;font-size:9.5px;color:var(--mute);
-    border:1px solid var(--line);border-radius:3px;padding:1px 4px;white-space:nowrap}
+  /* Fazit: die eine Zahl, fuer die die App morgens geoeffnet wird. */
+  .fazit{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:12px 0 2px}
+  .fazit .gross{font-family:'Fraunces',serif;font-size:40px;font-weight:600;line-height:1;
+    letter-spacing:-.025em;font-variant-numeric:tabular-nums}
+  .fazit .gross small{font-family:'DM Mono',monospace;font-size:14px;font-weight:400;color:var(--mute)}
+  .fazit .wann{font-size:14.5px;font-weight:600}
+  .fazit .ri{font-family:'DM Mono',monospace;font-size:11.5px;color:var(--mute)}
   .nowcast{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
     border-radius:14px;padding:12px 14px;margin-bottom:14px}
   .nowcast .lab{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
@@ -125,25 +111,40 @@
   .nowcast .q-auf{color:#7ee3b4;font-weight:600}
   .nowcast .q-ab{color:#ff9d85;font-weight:600}
   .nowcast .q-seit{color:#bcd9e6}
-  .stat .sub.spread{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--mute);margin-top:4px}
-  .stat .sub.spread-warn{color:var(--coral-deep);font-weight:500}
   .dir-arrow{display:inline-block;font-size:14px;line-height:1}
 
-  .srow-lead{font-weight:600;color:var(--ink)}
-  .srow .res{font-family:'DM Mono',monospace;font-size:10px;color:var(--mute);font-weight:400}
-  .lead-tag{
-    font-family:'DM Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;
-    background:var(--gold);color:#3d2a00;border-radius:4px;padding:1.5px 5px;margin-left:3px;font-weight:500
-  }
+  /* Modellzeilen unter der App-Zahl: heller als diese, das Leitmodell dunkler
+     als die uebrigen. Wer hinsieht, erkennt die Streuung der Modelle direkt
+     an den Zahlen - dafuer braucht es keinen Warnsatz mehr. */
+  table.hours tr.mrow td{color:#7b93a3;font-size:11px}
+  table.hours tr.mrow th.rowlab{text-transform:none;letter-spacing:0;font-size:9.5px;color:#8199a8}
+  table.hours tr.mlead td{color:#3a5567}
+  table.hours tr.mlead th.rowlab{color:var(--ink);font-weight:600}
+  table.hours tr.mtrenner td,table.hours tr.mtrenner th{
+    padding:0;height:7px;border-top:1px solid rgba(6,36,58,.13)}
+  .mfuss{font-family:'DM Mono',monospace;font-size:9px;color:#8199a8;margin-top:6px}
 
-  .sources{margin-top:11px;border-top:1px dashed var(--line);padding-top:9px}
-  .sources .lab{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--mute);margin-bottom:5px}
-  .srow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12.5px;color:#3a5567;padding:1.5px 0}
-  .srow .sv{font-family:'DM Mono',monospace;font-size:12.5px;color:var(--ink)}
-
-  .strip-wrap{margin-top:11px;border-top:1px dashed var(--line);padding-top:9px}
-  .strip-wrap .lab{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--mute);margin-bottom:5px}
-  .hl-hint{color:var(--gold);letter-spacing:.05em;text-transform:none}
+  /* Folgetage: eine Zeile je Tag, Tippen klappt dieselbe Matrix auf. */
+  .tage .lab{font-family:'DM Mono',monospace;font-size:9.5px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--mute);display:flex;justify-content:space-between;
+    align-items:baseline;gap:10px;margin-bottom:2px}
+  .tage .tipp{letter-spacing:.04em;text-transform:none;font-size:9px}
+  details.tagz{border-top:1px solid var(--line)}
+  details.tagz summary{display:flex;align-items:baseline;gap:8px;padding:10px 2px;
+    cursor:pointer;list-style:none}
+  details.tagz summary::-webkit-details-marker{display:none}
+  details.tagz summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:6px}
+  .tg-nm{font-family:'Fraunces',serif;font-size:16px;font-weight:600;min-width:68px}
+  .tg-dt{font-family:'DM Mono',monospace;font-size:10px;color:var(--mute);min-width:42px}
+  .tg-pk{font-family:'DM Mono',monospace;font-size:17px;font-weight:500;min-width:48px;
+    text-align:right;font-variant-numeric:tabular-nums}
+  .tg-pk small{font-size:10px;color:var(--mute);font-weight:400}
+  .tg-rest{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--mute);
+    margin-left:auto;text-align:right}
+  .tg-pf{color:#b9a98a;font-size:16px;margin-left:6px;transition:transform .18s ease}
+  details.tagz[open] .tg-pf{transform:rotate(90deg)}
+  @media (prefers-reduced-motion:reduce){.tg-pf{transition:none}}
+  .tg-auf{padding-bottom:12px}
   .strip{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;scrollbar-width:thin}
   table.hours{border-collapse:collapse;font-size:12px}
   table.hours th,table.hours td{
@@ -162,8 +163,6 @@
      eigener Messung steht und wo auf blankem Modell – ohne dass es wie eine
      Warnung aussieht. */
   table.hours td.geeicht b{box-shadow:0 2px 0 -1px var(--coral-deep);padding-bottom:1px}
-  .geeicht-hint{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.04em;
-    text-transform:none;color:var(--coral-deep);margin-left:8px}
   table.hours .hl{background:rgba(242,169,0,.16)}
   table.hours tr:first-child th.hl{color:#b07c00;font-weight:600}
 
@@ -210,7 +209,12 @@ const FORECAST_DAYS = 5;
 // AROME reicht am dritten Tag exakt bis 20 Uhr. Mit Fensterende 21 fiel es dort
 // als "unvollständig" raus und der Tag wurde von ICON-EU (7 km) geführt;
 // mit 20 Uhr führt es auch an Tag 3 mit 1,5 km.
-const STRIP_START = 8, STRIP_END = 20;   // sichtbare Stundenleiste
+const STRIP_START = 8, STRIP_END = 20;   // aeusserste Grenzen der Stundenleiste
+// Die Leiste beginnt vier Stunden vor dem Session-Fenster statt pauschal um 8:
+// Auf dem Handy sind 13 Spalten mehr Scrollweg als Nutzen, und was am Vormittag
+// passiert, entscheidet ueber eine Nachmittagssession nichts. Am Wochenende
+// beginnt das Fenster ohnehin um 8, dort bleibt die Leiste unveraendert.
+const STRIP_VORLAUF = 4;
 const SESSION_WEEKDAY = [15, 20];        // relevantes Fenster Mo–Fr (nach Feierabend)
 const SESSION_WEEKEND = [8, 20];         // Sa/So: ganzer Tag
 const STALE_MS = 30 * 60 * 1000;         // Auto-Refresh, wenn Daten älter sind
@@ -238,13 +242,13 @@ function sessionWindow(dateStr){
 // seit ECMWF am 1.10.2025 den vollen Katalog geöffnet hat, gibt es HRES nativ
 // in 9 km, und damit rückt der Gitterpunkt auf 3,0 km heran.
 const WIND_MODELS = [
-  {id:"meteofrance_arome_france_hd",    name:"AROME HD",      res:"1,5 km"},
-  {id:"meteofrance_arome_france",       name:"AROME",         res:"2,5 km"},
-  {id:"ecmwf_ifs",                      name:"ECMWF IFS",     res:"9 km"},
-  {id:"icon_eu",                        name:"ICON-EU · DWD", res:"7 km"},
-  {id:"ukmo_global_deterministic_10km", name:"UK Met Office", res:"10 km"},
-  {id:"meteofrance_arpege_europe",      name:"ARPEGE",        res:"11 km"},
-  {id:"gfs_seamless",                   name:"GFS · NOAA",    res:"13 km"},
+  {id:"meteofrance_arome_france_hd",    name:"AROME HD",      res:"1,5 km", kurz:"Arome HD"},
+  {id:"meteofrance_arome_france",       name:"AROME",         res:"2,5 km", kurz:"Arome"},
+  {id:"ecmwf_ifs",                      name:"ECMWF IFS",     res:"9 km", kurz:"ECMWF"},
+  {id:"icon_eu",                        name:"ICON-EU · DWD", res:"7 km", kurz:"Icon-EU"},
+  {id:"ukmo_global_deterministic_10km", name:"UK Met Office", res:"10 km", kurz:"UKMO"},
+  {id:"meteofrance_arpege_europe",      name:"ARPEGE",        res:"11 km", kurz:"Arpege"},
+  {id:"gfs_seamless",                   name:"GFS · NOAA",    res:"13 km", kurz:"GFS"},
 ];
 // EWAM trifft mit 39,15/-0,20 den Küstenpunkt am genauesten.
 // Nicht dabei: GFS-Wave – rastet auf 39,25/0,0 ein, ~20 km draußen auf See.
@@ -285,14 +289,16 @@ const BIAS_MODEL_ID   = "meteofrance_arome_france_hd"; // nur dieses Modell wurd
 const ENSEMBLE_MODEL = "icon_eu";
 const WING_MIN = 14;   // kn – Schwelle aus dem früheren Dashboard: ab hier lohnt Wing-Foilen
 
-// Gegenprobe: ECMWF IFS und ICON-EU treffen am Marenyet bisher am besten – über
-// sechs Tage lag ihre Tagesspitze nie mehr als 3 kn zu hoch, AROME HD zweimal.
-// Liegen beide deutlich unter der angezeigten Zahl, ist das ein Warnzeichen.
-// Am 15.09.2026 war genau das der Fall: Karte 11,5 kn, ECMWF 8,9, ICON-EU 8,3 –
-// gemessen wurden 8,0 kn, ab 17 Uhr nur noch 4 bis 5. Die Streuungswarnung
-// (ab 6 kn Spanne) schlug nicht an, weil die Mehrheit der Modelle mit zu hoch lag.
-const PRUEF_MODELLE = ["ecmwf_ifs", "icon_eu"];
-const PRUEF_ABSTAND = 2;   // kn – ab hier gilt "deutlich darunter"
+// Vier Modelle in der Stundenmatrix. Mehr Zeilen liest auf dem Handy niemand,
+// und UKMO und ARPEGE trugen zur Entscheidung am wenigsten bei. AROME HD ist
+// das Leitmodell; ECMWF und ICON-EU treffen am Marenyet nachweislich am besten
+// (über sechs Tage lag ihre Tagesspitze nie mehr als 3 kn zu hoch, AROME HD
+// zweimal); GFS läuft als weit danebenliegende Gegenstimme mit. Am 15.09.2026
+// hätte das gereicht: Die Karte zeigte 11,5 kn, ECMWF 8,9 und ICON-EU 8,3 –
+// gemessen wurden ab 17 Uhr 4 bis 5 kn. In der Matrix steht diese Spreizung,
+// ohne dass ein Warnsatz sie erklären muss.
+const MATRIX_MODELLE = ["meteofrance_arome_france_hd", "ecmwf_ifs",
+                        "icon_eu", "gfs_seamless"];
 
 // Realitätscheck im Messpanel: Was sagt das Modell für die laufende Stunde, was
 // misst die Station am Spot gerade? Klaffen beide auseinander, liegt das Modell
@@ -649,7 +655,8 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
     // Session-Fenster-Stunden werden markiert (hl)
     const leadWh  = waveLead ? seriesFor(wave.hourly, "wave_height", waveLead.id, WAVE_MODELS.length) : null;
 
-    const stripIdx = windowIdx(wTimes, d, STRIP_START, STRIP_END);
+    const stripVon = Math.max(STRIP_START, s0 - STRIP_VORLAUF);
+    const stripIdx = windowIdx(wTimes, d, stripVon, STRIP_END);
     const hours = stripIdx.map(i => {
       const t = wTimes[i];
       const h = +t.slice(11,13);
@@ -679,16 +686,24 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
       };
     });
 
+    // Eine Zeile je Modell, auf dieselben Stunden gerastert wie hours.
+    const matrix = MATRIX_MODELLE.map(id => {
+      const m = WIND_MODELS.find(x => x.id === id);
+      if (!m) return null;
+      const sp = seriesFor(wind.hourly, "wind_speed_10m", id, WIND_MODELS.length);
+      const werte = sp ? stripIdx.map(i => sp[i]) : null;
+      return {
+        id, name: m.kurz, lead: !!lead && lead.id === id,
+        // null, wenn das Modell den Tag nicht mehr abdeckt: AROME hoert nach rund
+        // zwei Tagen auf. Das gehoert sichtbar in die Tabelle statt stillschweigend
+        // aus der Liste zu verschwinden.
+        werte: (werte && werte.some(v => v != null)) ? werte : null,
+      };
+    }).filter(Boolean);
+
     // Streuung über alle Modelle: wie einig sich die Quellen über die Spitze sind
     const peaks = perSource.map(s=>s.peak);
 
-    // Gegenprobe: Liegen BEIDE Prüfmodelle deutlich unter der Zahl, die oben steht,
-    // ist die Prognose mit Vorsicht zu lesen. Beide, nicht eines – sonst schlägt es
-    // bei jedem normalen Modellrauschen an.
-    const gegen = PRUEF_MODELLE.map(id => perSource.find(s => s.id === id)).filter(Boolean);
-    const gegenprobe = (peak != null && gegen.length === PRUEF_MODELLE.length
-        && gegen.every(s => peak - s.peak >= PRUEF_ABSTAND))
-      ? gegen.map(s => ({name: s.name.split(" ")[0], peak: s.peak})) : null;
 
     return {
       date: d,
@@ -713,7 +728,7 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
       spreadMin: peaks.length ? Math.min(...peaks) : null,
       spreadMax: peaks.length ? Math.max(...peaks) : null,
       perSource,
-      gegenprobe,
+      matrix,
       ens:   ensembleFor(ensemble, d, s0, s1),
       aemet: aemetFor(aemet, d, s0, s1),
       waveH:    waveLead ? waveLead.h : null,
@@ -783,6 +798,11 @@ function realitaetsCheck(live, heute, stunde, jetzt = Date.now()){
 
 // Gemessene Werte über den Prognosekarten. Bewusst getrennt dargestellt:
 // gemessen ist etwas anderes als gerechnet.
+// Alle drei Stationen heissen "Cullera ...". Auf dem Handy traegt das Praefix
+// nichts bei, kostet aber so viel Breite, dass der Name umbricht und die Zeile
+// zweizeilig wird - erst recht, seit das Alter danebensteht.
+const kurzName = n => (n || "").replace(/^Cullera\s+/, "");
+
 function renderLive(live, check, jetzt = Date.now()){
   if (!live || !Array.isArray(live.stationen) || !live.stationen.length) return "";
   let frisch = 0;
@@ -795,7 +815,7 @@ function renderLive(live, check, jetzt = Date.now()){
     // am Morgen wie ein aktueller Wert.
     const marke = alt ? ` · ${alterText(messAlterMin(s.gemessen, jetzt))}` : "";
     return `<div class="live-row${alt ? " alt" : ""}">`
-      + `<span class="st">${s.name}</span>`
+      + `<span class="st">${kurzName(s.name)}</span>`
       + `<span class="meta">${dirArrow(s.grad)} ${s.richtung || "?"} `
       + `<span class="${q.cls}">${q.label}</span> · ${zeit}${marke}</span>`
       + `<span class="kn">${s.kn} <small>kn</small></span></div>`;
@@ -844,110 +864,119 @@ function renderNowcast(nc){
     + `<div class="strip"><table class="hours">${zeilen}</table></div></div>`;
 }
 
-function render(days, live, nowcast){
-  const fmt1 = v => v==null ? "–" : v.toFixed(1);
-  const fmt0 = v => v==null ? "–" : Math.round(v).toString();
-  // Komma statt Punkt – deutsches Zahlenformat für Werte mit Nachkommastelle.
-  const fmtSigned = v => v==null ? "–"
-    : (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(1).replace(".", ",");
-  const fmtDez = v => v==null ? "–" : v.toFixed(1).replace(".", ",");
+// Zahlenformate: von mehreren Renderfunktionen gebraucht, deshalb hier oben.
+// Komma statt Punkt - die App ist durchgehend deutsch, und "0,4 m" ist genauso
+// breit wie "0.4 m", kostet in der Matrix also keine Spalte.
+const fmt1 = v => v==null ? "–" : v.toFixed(1).replace(".", ",");
+const fmt0 = v => v==null ? "–" : Math.round(v).toString();
 
-  // Ein Zeitpunkt für alle Altersprüfungen dieses Durchlaufs.
-  const jetzt = Date.now();
-  let html = renderLive(live, realitaetsCheck(live, days[0], new Date().getHours(), jetzt), jetzt)
-    + renderNowcast(nowcast) + '<div class="cards">';
-  days.forEach((d, idx) => {
-    const dateStr = new Date(d.date+"T12:00:00")
-      .toLocaleDateString("de-DE",{day:"2-digit",month:"long"});
-    const srcRows = d.perSource.map(s => {
-      const isLead = s.name === d.leadName;
-      return `<div class="srow${isLead ? " srow-lead" : ""}">`
-        + `<span>${s.name} <span class="res">${s.res}</span>`
-        + `${isLead ? ' <span class="lead-tag">Leitmodell</span>' : ""}`
-        + `${!s.complete ? ' <span class="res">unvollständig</span>' : ""}</span>`
-        + `<span class="sv">${fmt0(s.peak)} kn</span></div>`;
-    }).join("")
-    // AEMET steht abgesetzt darunter: Es ist keine weitere Rechnung derselben
-    // Art, sondern Spaniens eigener Lauf, redaktionell geprüft. In die
-    // Streuungsangabe darf es deshalb nicht einfließen.
-    + (d.aemet ? `<div class="srow srow-aemet">`
-        + `<span>AEMET <span class="res">2,5 km</span> <span class="zweit-tag">zweite Meinung</span>`
-        + (d.aemet.grad == null ? "" :
-            ` <span class="res">${dirName(d.aemet.grad)} <span class="${windQuality(d.aemet.grad).cls}">${windQuality(d.aemet.grad).label}</span></span>`)
-        + `</span>`
-        + `<span class="sv">${fmt0(d.aemet.peak)} kn</span></div>` : "");
-
-    // Große Streuung = die Modelle sind sich uneinig, Prognose unsicher
-    const spread = (d.spreadMax != null && d.spreadMin != null) ? d.spreadMax - d.spreadMin : null;
-    const spreadWarn = spread != null && spread >= 6;
-
-    // Stundenleiste: transponierte Tabelle (Stunden = Spalten), Fenster markiert
-    const hlc = h => h.hl ? ' class="hl"' : "";
-    const stripRows = [
-      ["Uhr",   d.hours.map(h=>`<th${hlc(h)}>${h.t.slice(11,13)}</th>`).join("")],
-      ["Wind",  d.hours.map(h=>`<td class="${h.hl?"hl ":""}${h.geeicht?"geeicht":""}"><b>${fmt0(h.wind)}</b></td>`).join("")],
-      ["Böen",  d.hours.map(h=>`<td${hlc(h)}>${fmt0(h.gust)}</td>`).join("")],
-      ["Richt.",d.hours.map(h=>`<td${hlc(h)}><span class="${windQuality(h.dir).cls}" title="${windQuality(h.dir).label}">${dirName(h.dir)}</span></td>`).join("")],
-      ["Welle", d.hours.map(h=>`<td${hlc(h)}>${fmt1(h.wave)}</td>`).join("")],
-    ].map(([lab, cells]) => `<tr><th class="rowlab">${lab}</th>${cells}</tr>`).join("");
-
-    html += `
-    <div class="card">
-      <div class="card-head">
-        <span class="day">${dayLabel(d.date, idx)}</span>
-        <span class="date">${dateStr} · ${d.winStart}–${d.winEnd} Uhr</span>
-      </div>
-      <div class="big">
-        <div class="stat">
-          <div class="lab">Wind Spitze</div>
-          <div class="val">${fmt0(d.windPeak)} <small>kn</small>${
-            d.peakHour != null ? ` <small class="at">um ${String(d.peakHour).padStart(2,"0")} Uhr</small>` : ""}</div>
-          <div class="sub">${dirArrow(d.windDir)} aus <b>${dirName(d.windDir)}</b> · <span class="${windQuality(d.windDir).cls}">${windQuality(d.windDir).label}</span></div>
-          <div class="sub">Böen <b>${fmt0(d.gustMax)} kn</b> · Ø Fenster ${fmt0(d.windAvg)} kn</div>
-          ${d.ens ? `<div class="chance">
-            <div class="chance-head"><span>Chance auf ${WING_MIN} kn</span><b>${d.ens.chance} %</b></div>
-            <div class="chance-bar"><i style="width:${Math.max(2, d.ens.chance)}%"></i></div>
-            <div class="chance-sub">${fmt0(d.ens.p10)}–${fmt0(d.ens.p90)} kn in 80 % der Läufe<br>${d.ens.n} × ICON-EU-EPS · 13 km</div>
-          </div>` : ""}
-          ${d.biasDelta != null ? `<div class="sub bias">korrigiert ${fmtSigned(d.biasDelta)} kn · Modell roh ${fmtDez(d.peakRaw)} kn<br>aus ${d.biasPeakN} Messungen um ${String(d.peakHour).padStart(2,"0")} Uhr · ${d.biasGeeicht}/${d.biasStunden} Fensterstunden geeicht</div>` : ""}
-          <div class="sub spread${spreadWarn ? " spread-warn" : ""}">Modelle ${d.biasGeeicht ? "roh " : ""}${fmt0(d.spreadMin)}–${fmt0(d.spreadMax)} kn${
-            spreadWarn ? " · unsicher" : ""}</div>
-            ${d.gegenprobe ? `<div class="sub warnung">Gegenprobe: ${d.gegenprobe.map(s => `${s.name} ${fmt0(s.peak)}`).join(" · ")} kn<br>beide deutlich niedriger – Zahl oben mit Vorsicht</div>` : ""}
-        </div>
-        <div class="stat">
-          <div class="lab">Welle Ø</div>
-          <div class="val">${fmt1(d.waveH)} <small>m</small></div>
-          <div class="sub">Periode <b>${fmt0(d.waveP)} s</b></div>
-          <div class="sub">aus <b>${dirName(d.waveDir)}</b></div>
-          <div class="sub spread">${d.waveLeadName || "–"}</div>
-        </div>
-      </div>
-      <div class="strip-wrap">
-        <div class="lab">Stundenverlauf${d.hours.some(h=>h.hl)
-          ? ` <span class="hl-hint">■ ${d.winStart}–${d.winEnd} Uhr</span>` : ""}${
-          d.hours.some(h=>h.geeicht)
-          ? ` <span class="geeicht-hint">_ geeicht</span>` : ""}</div>
-        <div class="strip"><table class="hours">${stripRows}</table></div>
-      </div>
-      <div class="sources">
-        <div class="lab">Spitze je Quelle · roh, unkorrigiert</div>
-        ${srcRows}
-      </div>
-    </div>`;
-  });
-  html += "</div>";
-  document.getElementById("content").innerHTML = html;
-
-  // Unter der Woche direkt zum relevanten Fenster scrollen.
-  // Nur die Leisten der Tageskarten: In der Nowcast-Leiste markiert .hl die
-  // Spitze, nicht das Fenster – dorthin zu scrollen würde ausgerechnet die
-  // nächsten Viertelstunden aus dem Bild schieben.
-  document.querySelectorAll(".strip-wrap .strip").forEach(el => {
-    const hl = el.querySelector(".hl");
-    if (hl) el.scrollLeft = Math.max(0, hl.offsetLeft - 52);
-  });
+// Die eine Zahl, für die die App geöffnet wird: Spitze, Uhrzeit, Richtung.
+function fazitZeile(d){
+  const q = windQuality(d.windDir);
+  return `<div class="fazit">`
+    + `<span class="gross">${fmt0(d.windPeak)}<small> kn</small></span>`
+    + (d.peakHour != null
+        ? `<span class="wann">um ${String(d.peakHour).padStart(2,"0")} Uhr</span>` : "")
+    + `<span class="ri">${dirArrow(d.windDir)} ${dirName(d.windDir)} `
+    + `· <span class="${q.cls}">${q.label}</span></span>`
+    + `</div>`;
 }
 
+// Stundenmatrix: Stunden quer, darunter die Zahl der App mit Böen, Richtung und
+// Welle – dann je eine Zeile pro Modell. Damit steht die Streuung im Bild, statt
+// in Warnsätzen daneben zu stehen: Am 15.09.2026 sagte die Karte 11 kn, während
+// ECMWF und ICON-EU bei 8 lagen und am Strand kaum Wind war.
+function renderMatrix(d){
+  const hlc = h => h.hl ? ' class="hl"' : "";
+  const zeile = (lab, zellen, cls) =>
+    `<tr${cls ? ` class="${cls}"` : ""}><th class="rowlab">${lab}</th>${zellen}</tr>`;
+
+  let rows = zeile("Uhr", d.hours.map(h => `<th${hlc(h)}>${h.t.slice(11,13)}</th>`).join(""))
+    + zeile("Wind", d.hours.map(h =>
+        `<td class="${h.hl?"hl ":""}${h.geeicht?"geeicht":""}"><b>${fmt0(h.wind)}</b></td>`).join(""))
+    + zeile("Böen", d.hours.map(h => `<td${hlc(h)}>${fmt0(h.gust)}</td>`).join(""))
+    + zeile("Richt.", d.hours.map(h => `<td${hlc(h)}>`
+        + `<span class="${windQuality(h.dir).cls}">${dirName(h.dir)}</span></td>`).join(""))
+    + zeile("Welle", d.hours.map(h => `<td${hlc(h)}>${fmt1(h.wave)}</td>`).join(""))
+    + `<tr class="mtrenner"><th class="rowlab"></th>`
+    + `<td colspan="${d.hours.length}"></td></tr>`;
+
+  const fehlt = [];
+  for (const m of d.matrix){
+    if (!m.werte){ fehlt.push(m.name); continue; }
+    rows += zeile(m.name,
+      m.werte.map((v, i) => `<td${hlc(d.hours[i])}>${fmt0(v)}</td>`).join(""),
+      "mrow" + (m.lead ? " mlead" : ""));
+  }
+
+  return `<div class="strip"><table class="hours">${rows}</table></div>`
+    + (fehlt.length
+        ? `<div class="mfuss">${fehlt.join(", ")} rechnet nur rund zwei Tage voraus.</div>`
+        : "");
+}
+
+function renderHeute(d){
+  const datum = new Date(d.date+"T12:00:00")
+    .toLocaleDateString("de-DE",{day:"2-digit",month:"long"});
+  return `<div class="card">`
+    + `<div class="card-head"><span class="day">Heute</span>`
+    + `<span class="date">${datum} · Fenster ${d.winStart}–${d.winEnd} Uhr</span></div>`
+    + fazitZeile(d)
+    + renderMatrix(d)
+    + `</div>`;
+}
+
+// Folgetage: eine Zeile je Tag. Die Stunden stecken dahinter, nicht daneben –
+// sonst ist die Seite wieder so lang wie vorher.
+function renderTage(days){
+  if (!days.length) return "";
+  const zeilen = days.map((d, i) => {
+    const q = windQuality(d.windDir);
+    const datum = new Date(d.date+"T12:00:00")
+      // "Do., 17." wird zu "Do. 17." - das Komma sitzt zwischen Abkuerzungspunkt
+      // und Zahl und liest sich stockend.
+      .toLocaleDateString("de-DE",{weekday:"short",day:"2-digit"}).replace(",", "");
+    return `<details class="tagz"><summary>`
+      + `<span class="tg-nm">${dayLabel(d.date, i + 1)}</span>`
+      + `<span class="tg-dt">${datum}</span>`
+      + `<span class="tg-pk">${fmt0(d.windPeak)}<small> kn</small></span>`
+      + `<span class="tg-rest">`
+      + (d.peakHour != null ? `${String(d.peakHour).padStart(2,"0")} Uhr · ` : "")
+      + `${dirArrow(d.windDir)} ${dirName(d.windDir)} `
+      + `<span class="${q.cls}">${q.label}</span> · ${fmt1(d.waveH)} m</span>`
+      + `<span class="tg-pf">&#8250;</span>`
+      + `</summary><div class="tg-auf">${renderMatrix(d)}</div></details>`;
+  }).join("");
+  return `<div class="card tage">`
+    + `<div class="lab"><span>Nächste Tage</span>`
+    + `<span class="tipp">tippen für Stunden</span></div>${zeilen}</div>`;
+}
+
+// Leiste auf das Session-Fenster schieben, damit der Nachmittag im Bild steht.
+function scrollZumFenster(el){
+  const hl = el.querySelector(".hl");
+  if (hl) el.scrollLeft = Math.max(0, hl.offsetLeft - 52);
+}
+
+function render(days, live, nowcast){
+  // Ein Zeitpunkt für alle Altersprüfungen dieses Durchlaufs.
+  const jetzt = Date.now();
+  document.getElementById("content").innerHTML =
+      renderLive(live, realitaetsCheck(live, days[0], new Date().getHours(), jetzt), jetzt)
+    + renderHeute(days[0])
+    + renderNowcast(nowcast)
+    + renderTage(days.slice(1));
+
+  // Nur die Matrizen der Tage: In der Nowcast-Leiste markiert .hl die Spitze,
+  // nicht das Fenster – dorthin zu scrollen würde ausgerechnet die nächsten
+  // Viertelstunden aus dem Bild schieben.
+  document.querySelectorAll(".card .strip").forEach(scrollZumFenster);
+  // Zugeklappte Tage haben noch keine Breite, ihr Scrollwert bliebe wirkungslos.
+  document.querySelectorAll("details.tagz").forEach(el =>
+    el.addEventListener("toggle", () => {
+      if (el.open) el.querySelectorAll(".strip").forEach(scrollZumFenster);
+    }));
+}
 async function load(){
   document.getElementById("content").innerHTML =
     '<div class="state"><div class="spinner"></div>Lade Vorhersage&hellip;</div>';

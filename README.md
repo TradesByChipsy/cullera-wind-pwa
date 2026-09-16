@@ -28,11 +28,39 @@ Weitere Eigenschaften:
 - **Bias-Korrektur aus der eigenen Messreihe** — die Kopfzahl ist am Standort
   nachkalibriert, sobald genug Messpaare vom Marenyet vorliegen
 - **Nowcast-Leiste** in 15-Minuten-Schritten für die nächsten Stunden
-- **Chance statt nur Zahl** — 40 Ensemble-Läufe sagen, wie sicher der Tag ist
-- **AEMET als zweite Meinung** in der Quellenliste, sofern ein Schlüssel hinterlegt ist
+- **Stundenmatrix mit einer Zeile je Modell** — wo die Modelle auseinanderlaufen,
+  steht es in den Zahlen statt in Warnsätzen
 - Auflandig/ablandig-Hinweis — Cullera schaut nach Osten: Wind aus O = auflandig
   (drückt an Land), aus W = ablandig ⚠️ (drückt aufs offene Meer)
 - App-Shell wird offline gecacht, **Wetterdaten nie** — die kommen immer live
+
+---
+
+## Was auf dem Schirm steht
+
+Vier Blöcke, von jetzt nach später — mehr passt auf ein Handy nicht, ohne dass
+man den Überblick verliert:
+
+1. **Jetzt gemessen** — Marenyet, Faro, San Antonio mit Alter der Messung
+2. **Heute** — die Spitze als eine Zeile, darunter die Stundenmatrix
+3. **Nächste Stunden** — der 15-Minuten-Nowcast
+4. **Nächste Tage** — eine Zeile je Tag, Tippen klappt dieselbe Matrix auf
+
+Die Matrix zeigt quer die Stunden und darunter erst die Zahl der App mit Böen,
+Richtung und Welle, dann je eine Zeile für AROME HD, ECMWF, ICON-EU und GFS.
+Damit ersetzt sie den früheren Kachelblock samt Quellenliste, Streuungswarnung
+und Gegenprobe: Am 15.09.2026 stand auf der Karte 11 kn, während ECMWF bei 5 und
+ICON-EU bei 8 lagen und am Strand kaum Wind war. In der Matrix steht diese
+Spreizung untereinander und braucht keinen erklärenden Satz daneben.
+
+Die Leiste beginnt vier Stunden vor dem Fenster statt pauschal um 8 Uhr — unter
+der Woche also um 11. Deckt ein Modell den Tag nicht mehr ab (AROME hört nach
+rund zwei Tagen auf), steht das unter der Tabelle, statt dass die Zeile
+stillschweigend verschwindet.
+
+Die Zahlen aus den vorherigen Fassungen sind messbar: Die Seite war auf dem
+Handy 4714 px lang (5,8 Bildschirme), allein die Heute-Karte 887 px. Jetzt sind
+es 1738 px (2,1 Bildschirme) und 319 px.
 
 ---
 
@@ -427,6 +455,11 @@ jahresweise archiviert statt gelöscht.
 ---
 
 ## Nowcast, Chance, zweite Meinung
+
+> **Stand 16.09.2026:** Chance und AEMET werden weiter berechnet, aber seit dem
+> Umbau auf die schlanke Anzeige nicht mehr dargestellt — die Chance stand
+> ohnehin dauerhaft auf 0 %. Die beiden Abrufe laufen also derzeit ins Leere und
+> gehören entweder wieder in die Anzeige oder aus dem Ladeweg entfernt.
 
 ### Nowcast — die nächsten Stunden in 15-Minuten-Schritten
 
