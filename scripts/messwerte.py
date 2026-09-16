@@ -78,38 +78,6 @@ PROGNOSE_URL = (
     "&wind_speed_unit=kn&past_days=1&forecast_days=1&timezone=Europe%2FMadrid"
 )
 
-# AEMET als unabhängige zweite Meinung: Spaniens eigener HARMONIE-AROME-Lauf mit
-# eigener Datenassimilation und eigener Orografie. Der Schlüssel gehört nicht in
-# den Browser, deshalb holt ihn dieser Job und legt das Ergebnis als Datei ab.
-# Ohne Schlüssel wird der Teil übersprungen — die App kommt ohne ihn aus.
-AEMET_MUNICIPIO = "46105"  # Cullera
-AEMET_URL = (
-    "https://opendata.aemet.es/opendata/api/prediccion/especifica"
-    f"/municipio/horaria/{AEMET_MUNICIPIO}"
-)
-
-# AEMET gibt die Richtung SPANISCH an, und zwei Kürzel bedeuten dort das
-# GEGENTEIL des deutschen Kürzels:
-#     O  = Oeste     = West     (deutsch O = Ost)
-#     SO = Suroeste  = Südwest  (deutsch SO = Südost)
-# Ungeprüft übernommen würde aus ablandigem Westwind auflandiger Ostwind – und
-# damit aus einer Warnung eine Einladung. Deshalb wird hier in Grad übersetzt;
-# die App bildet daraus mit ihrer eigenen Rose die Anzeige.
-# Das _ES im Namen ist Absicht: compass() unten liefert DEUTSCHE Kürzel mit
-# denselben Buchstaben und gegenteiliger Bedeutung. Wer die beiden Tabellen
-# verwechselt, dreht die Windrichtung um 180 Grad – stumm.
-AEMET_GRAD_ES = {
-    "N": 0, "NNE": 22.5, "NE": 45, "ENE": 67.5,
-    "E": 90, "ESE": 112.5, "SE": 135, "SSE": 157.5,
-    "S": 180, "SSO": 202.5, "SO": 225, "OSO": 247.5,
-    "O": 270, "ONO": 292.5, "NO": 315, "NNO": 337.5,
-}
-
-# Die Vorhersage wird nur ein paar Mal am Tag neu gerechnet (Feld "elaborado"),
-# der Job läuft aber alle 15 Minuten. Häufiger abzufragen bringt nichts und
-# läuft in AEMETs Ratenbegrenzung – ein Abruf im Test genügte für HTTP 429.
-AEMET_SCHONFRIST_MIN = 60
-
 # Ab hier gilt der Messwert als veraltet – dieselbe Schwelle, die AVAMET auf der
 # eigenen Seite verwendet.
 STALE_MINUTES = 45
@@ -131,7 +99,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OBS_PATH = os.path.join(ROOT, "data", "observations.json")
 CSV_PATH = os.path.join(ROOT, "data", "messreihe.csv")
 PROG_PATH = os.path.join(ROOT, "data", "prognosereihe.csv")
-AEMET_PATH = os.path.join(ROOT, "data", "aemet.json")
 BIAS_PATH = os.path.join(ROOT, "data", "bias.json")
 
 KMH_TO_KN = 1.852
@@ -271,117 +238,16 @@ def prognosen_fuer(hourly, stunde):
     return out
 
 
-def aemet_prognose():
-    """AEMET-Stundenvorhersage für Cullera. Zweistufig: Der erste Aufruf liefert
-    nur eine URL, unter der die eigentlichen Daten liegen.
-
-    Ohne Schlüssel (Repo-Secret AEMET_API_KEY) wird der Teil übersprungen; die
-    App zeigt dann einfach keine zweite Meinung an."""
-    key = os.environ.get("AEMET_API_KEY", "").strip()
-    if not key:
-        print("  AEMET: kein Schlüssel gesetzt, übersprungen")
-        return None
-    try:
-        # Schlüssel als Kopfzeile, nicht als Query-Parameter: In der URL landet er
-        # sonst in AEMETs Zugriffsprotokollen und in jedem Proxy dazwischen.
-        meta = json.loads(fetch(AEMET_URL, headers={"api_key": key}))
-        if meta.get("estado") != 200 or not meta.get("datos"):
-            print(f"  AEMET: {meta.get('descripcion', 'unerwartete Antwort')}")
-            return None
-        roh = json.loads(fetch(meta["datos"]).decode("utf-8", errors="replace"))
-    except Exception as e:
-        print(f"  AEMET übersprungen ({e})")
-        return None
-
-    stunden = _aemet_stunden(roh)
-    if stunden is None:
-        return None
-    if not stunden:
-        print("  AEMET: keine Windstunden in der Antwort")
-        return None
-    print(f"  AEMET: {len(stunden)} Stunden, ab {stunden[0]['zeit'][11:16]}")
-    return {
-        "stand": datetime.now(TZ).isoformat(timespec="minutes"),
-        "quelle": "AEMET OpenData · HARMONIE-AROME 2,5 km, redaktionell geprüft",
-        "gemeinde": "Cullera",
-        "stunden": stunden,
-    }
-
-
-def _aemet_stunden(roh):
-    """Die Windstunden aus AEMETs Antwort herausziehen.
-
-    Struktur: [ { "prediccion": { "dia": [ { "fecha": …,
-      "vientoAndRachaMax": [ {"direccion":["E"],"velocidad":["10"],"periodo":"08"},
-                             {"value":"25","periodo":"08"} ] } ] } } ]
-    Wind und Böe stehen in DERSELBEN Liste, unterschieden nur dadurch, ob
-    "velocidad" oder "value" gesetzt ist.
-
-    Gibt None zurück, wenn die Antwort anders aufgebaut ist als erwartet —
-    unterscheidbar von der leeren Liste, die "aufgebaut wie erwartet, aber keine
-    Windstunden drin" bedeutet."""
-    stunden = []
-    try:
-        for tag in roh[0]["prediccion"]["dia"]:
-            datum = str(tag.get("fecha", ""))[:10]
-            wind, boeen = {}, {}
-            for e in tag.get("vientoAndRachaMax", []):
-                p = str(e.get("periodo", "")).zfill(2)[:2]
-                if e.get("velocidad"):
-                    wind[p] = {
-                        "kmh": _erste_zahl(e["velocidad"]),
-                        "richtung": (e.get("direccion") or [None])[0],
-                    }
-                elif e.get("value") not in (None, ""):
-                    boeen[p] = _erste_zahl([e["value"]])
-            stunden.extend(_aemet_tag(datum, wind, boeen))
-    except Exception as e:
-        print(f"  AEMET: Antwort nicht wie erwartet aufgebaut ({e})")
-        return None
-    return stunden
-
-
-def _aemet_tag(datum, wind, boeen):
-    """Die Stunden eines Tages zusammensetzen. Ein Eintrag ohne verwertbare
-    Geschwindigkeit erzeugt gar keine Stunde – lieber eine Lücke als ein
-    erfundener Wert."""
-    raus = []
-    for p in sorted(wind):
-        w = wind[p]
-        if w["kmh"] is None:
-            continue
-        # "C" steht für calma – dann gibt es keine Richtung, nur Windstille.
-        grad = AEMET_GRAD_ES.get((w["richtung"] or "").strip().upper())
-        raus.append({
-            "zeit": f"{datum}T{p}:00",
-            "kn": round(w["kmh"] / KMH_TO_KN, 1),
-            "grad": grad,
-            "boe_kn": (round(boeen[p] / KMH_TO_KN, 1)
-                       if boeen.get(p) is not None else None),
-        })
-    return raus
-
-
-def _erste_zahl(werte):
-    """AEMET verpackt Zahlen als Liste von Strings, gelegentlich leer."""
-    for v in werte or []:
-        try:
-            return float(str(v).strip())
-        except (TypeError, ValueError):
-            continue
-    return None
-
-
 def main():
     print("AVAMET-Stationen abrufen:")
     stations = [s for s in (read_station(sid, nm) for sid, nm in STATIONS) if s]
 
     os.makedirs(os.path.dirname(OBS_PATH), exist_ok=True)
 
-    # Prognosereihe und AEMET ZUERST und unabhängig von den Stationen: Beide
-    # hängen nicht an AVAMET. Standen sie hinter dem Ausstieg unten, verlor ein
-    # AVAMET-Ausfall – bei Amateurstationen der Normalfall – auch die
-    # Modellauswertung und die zweite Meinung für dieselbe Stunde.
+    # Die Prognosereihe ZUERST und unabhängig von den Stationen: Sie hängt nicht
+    # an AVAMET. Stünde sie hinter dem Ausstieg unten, verlöre ein AVAMET-Ausfall
+    # – bei Amateurstationen der Normalfall – auch die Modellauswertung für
+    # dieselbe Stunde.
     roh_prognosen = hole_prognosen()
     stunde = datetime.now(TZ).strftime("%Y-%m-%dT%H:00")
     prognosen = prognosen_fuer(roh_prognosen, stunde)
@@ -389,7 +255,6 @@ def main():
         print(f"  Prognosen für {stunde[11:16]}: " +
               ", ".join(f"{KURZNAME.get(m, m)} {v['kn']:.1f}" for m, v in prognosen.items()))
     schreibe_prognosereihe(stunde, prognosen)
-    schreibe_aemet()
 
     if not stations:
         print("Keine Station lieferte Daten – observations.json bleibt unverändert.")
@@ -535,34 +400,6 @@ def schreibe_bias():
             f"{h}h {v['kn']:+.1f} (n={v['n']})" for h, v in stunden.items()))
     else:
         print(f"  Bias: noch keine Stunde mit {BIAS_MIN_STUNDE} Paaren")
-
-
-def aemet_ist_frisch():
-    """Liegt schon eine junge Datei vor? Dann gar nicht erst abfragen."""
-    try:
-        with open(AEMET_PATH, encoding="utf-8") as f:
-            stand = datetime.fromisoformat(json.load(f)["stand"])
-    except Exception:
-        return False
-    alter = (datetime.now(TZ) - stand).total_seconds() / 60
-    if alter < AEMET_SCHONFRIST_MIN:
-        print(f"  AEMET: Datei ist {alter:.0f} Min alt, Abruf gespart")
-        return True
-    return False
-
-
-def schreibe_aemet():
-    """Nur schreiben, wenn wirklich Daten kamen – sonst bliebe die App ohne
-    zweite Meinung stehen, obwohl gestern noch eine da war."""
-    if aemet_ist_frisch():
-        return
-    daten = aemet_prognose()
-    if daten is None:
-        return
-    with open(AEMET_PATH, "w", encoding="utf-8") as f:
-        json.dump(daten, f, ensure_ascii=False, indent=1)
-        f.write("\n")
-    print(f"geschrieben: {AEMET_PATH}")
 
 
 if __name__ == "__main__":

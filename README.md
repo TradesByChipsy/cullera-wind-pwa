@@ -71,14 +71,13 @@ index.html                        die komplette App
 sw.js                             Service Worker (Offline-Shell, Cache-Strategie)
 manifest.webmanifest              Installierbarkeit
 icons/                            App-Icons
-scripts/messwerte.py              holt Messwerte, Prognosen und AEMET
+scripts/messwerte.py              holt Messwerte und Prognosen
 scripts/test_app.mjs              Tests der Rechenfunktionen aus index.html
 scripts/test_messwerte.py         Tests des Abrufskripts
 .github/workflows/messwerte.yml   hält das Skript im 15-Minuten-Takt am Laufen
 data/observations.json            aktuelle Messung (vom Job geschrieben)
 data/messreihe.csv                Messung + AROME, Grundlage der Bias-Korrektur
 data/prognosereihe.csv            alle Modelle je Stunde, für die Modellauswertung
-data/aemet.json                   AEMET-Vorhersage (nur mit hinterlegtem Schlüssel)
 data/bias.json                    fertig gerechnete Bias-Korrektur, die die App liest
 ```
 
@@ -194,9 +193,7 @@ alle 15 Min (05–19 UTC)
    └─ scripts/messwerte.py
         ├─ liest die drei AVAMET-Stationsseiten
         ├─ holt alle sieben Modelle für dieselbe Stunde
-        ├─ holt die AEMET-Vorhersage (nur mit Schlüssel)
         ├─ ergänzt data/prognosereihe.csv    → Modellauswertung
-        ├─ schreibt data/aemet.json          → zweite Meinung
         ├─ schreibt data/observations.json   → die App
         └─ ergänzt data/messreihe.csv        → die Auswertung
 ```
@@ -312,26 +309,24 @@ Funktionen umbenennt oder anders formatiert, muss das Suchmuster nachziehen — 
 Test sagt dann klar, welches.
 
 Geprüft wird, was ohne Netz und ohne DOM auskommt: die Bias-Bildung, die
-Nowcast-Auswahl, die Ensemble-Auswertung, der AEMET-Abgleich, die Richtungs- und
-Zeitumrechnung sowie alle Ausfallpfade. Nicht geprüft: Rendering und die echten
+Nowcast-Auswahl, die Modellmatrix, die Richtungs- und Zeitumrechnung sowie alle
+Ausfallpfade. Nicht geprüft: Rendering und die echten
 API-Antworten — dafür bleibt der Blick in den Browser.
 
-Festgenagelt ist dort auch der teuerste denkbare Fehler des Projekts: dass
-spanische und deutsche Himmelsrichtungen verwechselt werden. `AEMET_GRAD["O"]`
-muss 270 sein, `compass(90)` muss `"O"` sein — beides steht als Test drin.
+Festgenagelt ist dort unter anderem, dass `compass(90)` `"O"` ergibt und die
+Rose alle 16 Punkte trifft — sie beschriftet jede Messzeile.
 
 ---
 
 ### Vier Fallstricke, die Zeit gekostet haben
 
-- **AEMET gibt die Windrichtung spanisch an — und zwei Kürzel bedeuten dort das
+- **AEMET gab die Windrichtung spanisch an — und zwei Kürzel bedeuten dort das
   Gegenteil.** `O` ist *Oeste*, also West; `SO` ist *Suroeste*, also Südwest. In
   der deutschen Rose der App heißen dieselben Kürzel Ost und Südost. Ungeprüft
   übernommen wäre aus ablandigem Westwind auflandiger Ostwind geworden — aus einer
-  Warnung eine Einladung. Das Abrufskript übersetzt deshalb in Grad
-  (`AEMET_GRAD`), und die App bildet daraus mit ihrer eigenen Rose die Anzeige.
-  Beim ersten echten Abruf war das sofort sichtbar: AEMETs Vormittags-`O` wurde
-  zu 270° = W, der Nachmittag zu 90° = O — was zur gemessenen Seebrise passt.
+  Warnung eine Einladung. Das Abrufskript übersetzte deshalb in Grad. Seit dem
+  16.09.2026 ist AEMET raus, die Falle also entschärft; sie steht hier, falls die
+  Zweitmeinung je zurückkommt.
 
 - **AVAMET kodiert die Ortszeit als UTC.** Ein Zeitstempel von 09:00 Ortszeit kommt
   als Epoch für 09:00 UTC an. Wer ihn normal als UTC liest, landet im Sommer zwei
@@ -493,15 +488,17 @@ sie sahen nur Verschiedenes — nur half das bei der Entscheidung nicht weiter.
 **AEMET** war Spaniens eigene Vorhersage, redaktionell geprüft statt roher
 Modelloutput, und stand abgesetzt unter der Quellenliste. Sie reichte rund 48
 Stunden, erschien also nur auf den ersten beiden Tagen. Der Abruf läuft im
-Actions-Job weiter und schreibt `data/aemet.json` — die App liest die Datei seit
-dem 16.09.2026 nicht mehr.
+Am 16.09.2026 ist AEMET auch aus dem Actions-Job geflogen, samt `data/aemet.json`.
+Der Grund war nicht die Datenqualität, sondern Lärm: Der Job schrieb die Datei im
+Viertelstundentakt neu, und jeder dieser Commits blockierte den nächsten eigenen
+Push — für Daten, die niemand mehr las.
 
-Die Fallstricke von damals bleiben dokumentiert, weil der Job sie weiter trifft:
-die spanische Windrose (`O` heißt **West**) und die Schonfrist von einer Stunde
-(`AEMET_SCHONFRIST_MIN`) gegen AEMETs Ratenbegrenzung.
-
-Zum Schlüssel: im Repo unter *Settings → Secrets and variables → Actions* als
-`AEMET_API_KEY`. Fehlt er, überspringt das Skript den Teil. Nichts bricht.
+Das Repo-Secret `AEMET_API_KEY` wird nicht mehr gelesen und kann stehenbleiben
+oder gelöscht werden. Soll die Zweitmeinung zurück, liegt der komplette Abruf in
+der Git-Historie: Zweistufige API (Metadaten, dann `datos`-URL), Schlüssel im
+`api_key`-**Header**, Schonfrist von einer Stunde gegen die Ratenbegrenzung
+(ein Abruf im Test genügte für HTTP 429) und die Übersetzung der spanischen
+Windrose in Grad.
 
 ### Lizenz der Messdaten
 

@@ -1,9 +1,8 @@
 name: Messwerte Cullera abholen
 
-# Holt die Windmesswerte der drei AVAMET-Stationen in Cullera, die Prognose aller
-# Modelle und die AEMET-Vorhersage, und legt alles als Dateien ins Repo. Die PWA
-# kann beide Quellen nicht selbst abrufen: AVAMET schickt keine CORS-Header,
-# AEMET verlangt einen Schlüssel, der nicht in den Browser gehört.
+# Holt die Windmesswerte der drei AVAMET-Stationen in Cullera und die Prognose
+# aller Modelle, und legt beides als Dateien ins Repo. Die PWA kann AVAMET nicht
+# selbst abrufen: Die Seite schickt keine CORS-Header.
 #
 # WARUM EINE SCHLEIFE STATT NUR CRON
 # GitHub führt geplante Workflows auf freien Repos nur sporadisch aus. Trotz
@@ -32,7 +31,7 @@ on:
   workflow_dispatch:
 
 # Der Job schreibt observations.json, messreihe.csv, prognosereihe.csv und
-# aemet.json zurück ins Repo.
+# bias.json zurück ins Repo.
 permissions:
   contents: write
 
@@ -57,10 +56,6 @@ jobs:
 
       # Keine Abhängigkeiten nötig – das Skript nutzt nur die Standardbibliothek.
       - name: Alle 15 Minuten abholen
-        env:
-          # Optional. Fehlt der Schlüssel, überspringt das Skript den
-          # AEMET-Teil und schreibt die übrigen Dateien normal.
-          AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
