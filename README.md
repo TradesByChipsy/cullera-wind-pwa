@@ -454,12 +454,14 @@ jahresweise archiviert statt gelöscht.
 
 ---
 
-## Nowcast, Chance, zweite Meinung
+## Nowcast
 
-> **Stand 16.09.2026:** Chance und AEMET werden weiter berechnet, aber seit dem
-> Umbau auf die schlanke Anzeige nicht mehr dargestellt — die Chance stand
-> ohnehin dauerhaft auf 0 %. Die beiden Abrufe laufen also derzeit ins Leere und
-> gehören entweder wieder in die Anzeige oder aus dem Ladeweg entfernt.
+> **Am 16.09.2026 entfernt:** Chance (ICON-EU-EPS) und AEMET-Zweitmeinung sind
+> aus der App geflogen. Beide hatten mit dem Kachelblock und der Quellenliste
+> ihren einzigen Ausgabeort verloren, und die Chance stand ohnehin dauerhaft auf
+> 0 %. Damit sparen sich zwei Abrufe bei jedem App-Start. Was sie leisteten,
+> steht unten weiter beschrieben — der Code liegt in der Git-Historie bereit,
+> falls die Zweitmeinung zurück soll.
 
 ### Nowcast — die nächsten Stunden in 15-Minuten-Schritten
 
@@ -480,53 +482,26 @@ Die HD-Variante lieferte am 10.09.2026 gar nichts — auch über Frankreich nich
 es lag also nicht an der Abdeckung. Deshalb der Rückfall. Welche Quelle gerade
 führt, steht rechts über der Leiste.
 
-### Chance — 40 Läufe statt einer Zahl
+### Chance und AEMET — was sie leisteten (nicht mehr in der App)
 
-**ICON-EU-EPS** rechnet denselben Tag 40-mal mit leicht gestörten
-Startbedingungen. Daraus wird der Anteil der Läufe, die die Wing-Schwelle von
-14 kn erreichen, plus die Spanne, in der 80 % der Läufe liegen.
+**Chance** kam aus ICON-EU-EPS: 40 Läufe desselben Tages mit leicht gestörten
+Startbedingungen, daraus der Anteil über 14 kn. Der Haken war das Gitter — 13 km
+gegen 1,5 km beim Leitmodell. Das grobe Modell verschmiert die Küstenbrise, also
+stand regelmäßig eine brauchbare Spitze neben 0 % Chance. Beide Zahlen stimmten,
+sie sahen nur Verschiedenes — nur half das bei der Entscheidung nicht weiter.
 
-Die Schwelle stammt aus dem Dashboard der Vorphase (`WING_MIN = 14`), damit die
-App dieselbe Sprache spricht.
+**AEMET** war Spaniens eigene Vorhersage, redaktionell geprüft statt roher
+Modelloutput, und stand abgesetzt unter der Quellenliste. Sie reichte rund 48
+Stunden, erschien also nur auf den ersten beiden Tagen. Der Abruf läuft im
+Actions-Job weiter und schreibt `data/aemet.json` — die App liest die Datei seit
+dem 16.09.2026 nicht mehr.
 
-**Wichtig beim Lesen:** Die Chance kommt aus einem **anderen Modell** als die
-große Zahl. ICON-EU-EPS ist mit 13 km deutlich gröber als AROME mit 1,5 km und
-verschmiert die Küstenbrise. Deshalb kann die Spitze über der Schwelle liegen,
-während die Chance niedrig ist — beide Zahlen stimmen, sie sehen nur verschieden
-genau hin. Die Prozentzahl taugt für „wie sicher ist der Tag", nicht als zweite
-Meinung zur Höhe.
+Die Fallstricke von damals bleiben dokumentiert, weil der Job sie weiter trifft:
+die spanische Windrose (`O` heißt **West**) und die Schonfrist von einer Stunde
+(`AEMET_SCHONFRIST_MIN`) gegen AEMETs Ratenbegrenzung.
 
-### AEMET — die zweite Meinung zur Höhe
-
-Dafür steht AEMET in der Quellenliste, abgesetzt unter den Modellen. Spaniens
-eigener HARMONIE-AROME-Lauf mit eigener Datenassimilation und eigener Orografie —
-und redaktionell geprüft, kein roher Modelloutput. Stimmen AROME und AEMET
-überein, ist die Prognose belastbar; wenn nicht, weiß man wenigstens, dass man es
-nicht weiß.
-
-Der Schlüssel gehört nicht in eine statische PWA, deshalb holt der Actions-Job
-die Daten und legt sie als `data/aemet.json` ab.
-
-Die Vorhersage reicht rund **48 Stunden** — die zweite Meinung erscheint also nur
-auf den ersten beiden Tageskarten. Am dritten Tag liefert AEMET nur noch die
-Nachtstunden 00–07, die außerhalb jedes Fensters liegen; dass die Zeile dort
-fehlt, ist richtig und kein Ausfall.
-
-Abgefragt wird höchstens **einmal pro Stunde** (`AEMET_SCHONFRIST_MIN`), auch
-wenn der Job alle 15 Minuten läuft: AEMET rechnet die Vorhersage nur ein paar Mal
-am Tag neu, und die Ratenbegrenzung greift schnell — ein einzelner Testabruf
-reichte für HTTP 429. Ist die Datei jünger als die Schonfrist, wird gar nicht
-erst angefragt.
-
-**Einrichten:**
-
-1. Schlüssel anfordern unter <https://opendata.aemet.es/centrodedescargas/altaUsuario>
-   — kommt per E-Mail, kostenlos.
-2. Im Repo unter *Settings → Secrets and variables → Actions → New repository
-   secret* als `AEMET_API_KEY` hinterlegen.
-
-Fehlt der Schlüssel, überspringt das Skript den Teil und die App zeigt einfach
-keine AEMET-Zeile. Nichts bricht.
+Zum Schlüssel: im Repo unter *Settings → Secrets and variables → Actions* als
+`AEMET_API_KEY`. Fehlt er, überspringt das Skript den Teil. Nichts bricht.
 
 ### Lizenz der Messdaten
 

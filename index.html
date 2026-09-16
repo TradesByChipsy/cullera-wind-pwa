@@ -283,15 +283,6 @@ const BIAS_MODEL_ID   = "meteofrance_arome_france_hd"; // nur dieses Modell wurd
 // korrigiert und dabei "korrigiert" ins Kartenfeld geschrieben. Also: Jede Stunde
 // wird nur mit ihrer EIGENEN Stichprobe korrigiert, alle anderen bleiben roh.
 
-// Ensemble statt Einzelwert: ICON-EU-EPS rechnet denselben Tag 40-mal mit leicht
-// gestörten Startbedingungen. Aus der Streuung der 40 Läufe wird eine
-// Wahrscheinlichkeit — "70 % Chance auf 14 kn" ist für die Entscheidung, ob man
-// hinfährt, ehrlicher als eine einzelne Zahl mit zwei Nachkommastellen.
-// Gitterpunkt 2,1 km. Das ECMWF-Ensemble hätte 51 Mitglieder, sitzt aber auf
-// 39,0/-0,25 und damit 15,8 km südlich – für diesen Spot unbrauchbar.
-const ENSEMBLE_MODEL = "icon_eu";
-const WING_MIN = 14;   // kn – Schwelle aus dem früheren Dashboard: ab hier lohnt Wing-Foilen
-
 // Vier Modelle in der Stundenmatrix. Mehr Zeilen liest auf dem Handy niemand,
 // und UKMO und ARPEGE trugen zur Entscheidung am wenigsten bei. AROME HD ist
 // das Leitmodell; ECMWF und ICON-EU treffen am Marenyet nachweislich am besten
@@ -430,14 +421,9 @@ async function fetchAll(){
   // Stunde geeicht, zeigt die App den Rohwert – nie ein Grund abzubrechen.
   const reihe = getJSON("data/bias.json?t=" + Date.now()).catch(() => null);
 
-  // Ensemble, Nowcast und AEMET sind Zusatzquellen: Jede fällt für sich aus,
-  // ohne die Prognose mitzureißen. Deshalb einzeln abgefangen statt im
-  // Promise.all scheitern zu lassen.
-  const ensUrl = "https://ensemble-api.open-meteo.com/v1/ensemble"
-    + `?latitude=${LAT}&longitude=${LON}`
-    + "&hourly=wind_speed_10m&wind_speed_unit=kn"
-    + `&models=${ENSEMBLE_MODEL}`
-    + `&forecast_days=${FORECAST_DAYS}&timezone=${encodeURIComponent(TZ)}`;
+  // Der Nowcast ist Zusatzquelle: Er fällt für sich aus, ohne die Prognose
+  // mitzureißen. Deshalb einzeln abgefangen statt im Promise.all scheitern
+  // zu lassen.
   const nowUrl = "https://api.open-meteo.com/v1/forecast"
     + `?latitude=${LAT}&longitude=${LON}`
     + "&minutely_15=wind_speed_10m,wind_gusts_10m,wind_direction_10m"
@@ -445,19 +431,14 @@ async function fetchAll(){
     + `&models=${NOWCAST_MODELS.map(m=>m.id).join(",")}`
     + `&timezone=${encodeURIComponent(TZ)}`;
 
-  const ens   = getJSON(ensUrl).catch(() => null);
   const now15 = getJSON(nowUrl).catch(() => null);
-  // Liegt nur vor, wenn im Repo ein AEMET-Schlüssel hinterlegt ist.
-  const aemet = getJSON("data/aemet.json?t=" + Date.now()).catch(() => null);
 
-  const [wind, wave, live, csv, ensemble, nowcast, aemetData] = await Promise.all(
-    [getJSON(windUrl), getJSON(waveUrl), obs, reihe, ens, now15, aemet]);
+  const [wind, wave, live, csv, nowcast] = await Promise.all(
+    [getJSON(windUrl), getJSON(waveUrl), obs, reihe, now15]);
   return {
     wind, wave, live,
     bias: buildBias(csv),
-    ensemble,
     nowcast: buildNowcast(nowcast),
-    aemet: aemetData,
   };
 }
 
@@ -483,61 +464,6 @@ function buildNowcast(raw){
   return null;
 }
 
-// ---------- Wahrscheinlichkeit aus dem Ensemble ----------
-// Je Mitglied die Spitze im Fenster, daraus Streuung und Anteil über der
-// Wing-Schwelle. Nicht der Mittelwert der Mitglieder: Ein Mittel über 40 Läufe
-// glättet die Spitze genauso weg wie ein Modellmittel die Thermik.
-function ensembleFor(ensemble, dateStr, h0, h1){
-  if (!ensemble || !ensemble.hourly) return null;
-  const h = ensemble.hourly, t = h.time || [];
-  const mitglieder = Object.keys(h).filter(k => k.startsWith("wind_speed_10m"));
-  if (!mitglieder.length) return null;
-
-  const idx = [];
-  for (let i = 0; i < t.length; i++){
-    if (t[i].slice(0,10) !== dateStr) continue;
-    const st = +t[i].slice(11,13);
-    if (st >= h0 && st <= h1) idx.push(i);
-  }
-  if (!idx.length) return null;
-
-  const spitzen = [];
-  for (const k of mitglieder){
-    let best = null;
-    for (const i of idx){
-      const v = h[k][i];
-      if (v != null && (best == null || v > best)) best = v;
-    }
-    if (best != null) spitzen.push(best);
-  }
-  if (spitzen.length < 5) return null;
-
-  spitzen.sort((a,b) => a-b);
-  const q = p => spitzen[Math.min(Math.floor(p * spitzen.length), spitzen.length-1)];
-  return {
-    n: spitzen.length,
-    p10: q(0.1),
-    p90: q(0.9),
-    chance: Math.round(100 * spitzen.filter(v => v >= WING_MIN).length / spitzen.length),
-  };
-}
-
-// ---------- AEMET als zweite Meinung ----------
-function aemetFor(aemet, dateStr, h0, h1){
-  if (!aemet || !Array.isArray(aemet.stunden)) return null;
-  const treffer = aemet.stunden.filter(s => {
-    if (s.zeit.slice(0,10) !== dateStr) return false;
-    const st = +s.zeit.slice(11,13);
-    return st >= h0 && st <= h1;
-  });
-  if (!treffer.length) return null;
-  const peak = Math.max(...treffer.map(s => s.kn));
-  const beste = treffer.find(s => s.kn === peak);
-  // grad, nicht das Kürzel: AEMET liefert spanische Rosenkürzel, in denen O für
-  // Westen steht. Die Umrechnung passiert im Abrufskript, hier kommt schon Grad an.
-  return {peak, stunde: +beste.zeit.slice(11,13), grad: beste.grad};
-}
-
 // ---------- Aggregation ----------
 function windowIdx(times, dateStr, h0, h1){
   const idx = [];
@@ -549,7 +475,7 @@ function windowIdx(times, dateStr, h0, h1){
   return idx;
 }
 
-function aggregate({wind, wave, bias, ensemble, aemet}){
+function aggregate({wind, wave, bias}){
   const wTimes = wind.hourly.time;
   const vTimes = wave.hourly.time;
 
@@ -732,8 +658,6 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
       spreadMax: peaks.length ? Math.max(...peaks) : null,
       perSource,
       matrix,
-      ens:   ensembleFor(ensemble, d, s0, s1),
-      aemet: aemetFor(aemet, d, s0, s1),
       waveH:    waveLead ? waveLead.h : null,
       waveP:    waveLead ? waveLead.p : null,
       waveDir:  waveLead ? waveLead.dir : null,
@@ -1007,17 +931,14 @@ async function load(){
           + `Die Böe wandert um `
           + `denselben Betrag mit, ihr Aufschlag über den Wind bleibt also der des Modells. `
           + `Korrigiert wird nur, solange AROME HD führt: Die Abweichung wurde gegen dieses eine `
-          + `Modell gemessen und sagt nichts über ECMWF oder ICON-EU. Deshalb steht in der `
-          + `Quellenliste weiter der Rohwert. Die Korrektur wird von allein besser, je länger der `
+          + `Modell gemessen und sagt nichts über ECMWF oder ICON-EU. Deshalb stehen die `
+          + `Modellzeilen darunter roh. Die Korrektur wird von allein besser, je länger der `
           + `Job mitschreibt. `
         : "")
-      + `Die Chance-Angabe kommt aus einem ANDEREN Modell als die große Zahl: ICON-EU-EPS rechnet `
-      + `denselben Tag 40-mal durch, aber nur in 13 km Gitterweite. Deshalb kann die Spitze über `
-      + `der Schwelle liegen, während die Chance niedrig ist – das feine Modell sieht die Küstenbrise, `
-      + `das grobe verschmiert sie. Die Prozentzahl taugt für "wie sicher ist das", nicht als zweite `
-      + `Meinung zur Höhe. Als solche steht AEMET in der Quellenliste. `
-      + `Alle übrigen Zahlen stammen vom Leitmodell (heute ${lead}, ${leadRes}) – nicht gemittelt. `
-      + `Die ${nWind} Quellen werden nur zur Streuung ausgewiesen: liegen sie weit auseinander, ist die Prognose unsicher. `
+      + `Die Zeilen Wind, Böen, Richtung und Welle stammen vom Leitmodell (heute ${lead}, `
+      + `${leadRes}) – nicht gemittelt. Darunter steht je eine Zeile für vier der ${nWind} Modelle, `
+      + `roh und unkorrigiert: Laufen sie weit auseinander, ist die Prognose unsicher. Das ist `
+      + `dort abzulesen und braucht keine Warnzeile daneben. `
       + `Spitze = höchster Stundenwert im Fenster (Mo–Fr ${SESSION_WEEKDAY[0]}–${SESSION_WEEKDAY[1]} Uhr, `
       + `Sa/So ${SESSION_WEEKEND[0]}–${SESSION_WEEKEND[1]} Uhr), weil ein Tagesmittel die Nachmittagsthermik wegrechnet. `
       + `Fensterende ${SESSION_WEEKDAY[1]} Uhr: danach ist Sonnenuntergang. `

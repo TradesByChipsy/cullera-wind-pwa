@@ -10,7 +10,7 @@
  * Quelltext geprüft, keine Kopie, die auseinanderdriften könnte.
  *
  * Getestet wird, was ohne Netz und ohne DOM auskommt: buildBias, buildNowcast,
- * ensembleFor, aemetFor und der ganze Rechenweg einer Tageskarte (aggregate) mit
+ * und der ganze Rechenweg einer Tageskarte (aggregate) mit
  * nachgebauten API-Antworten. Nur das Rendering bleibt dem Blick in den Browser.
  */
 import fs from "fs";
@@ -42,12 +42,10 @@ const code = [
   schnipsel(/function istVeraltet\([\s\S]*?\n\}\n/, "istVeraltet"),
   schnipsel(/function alterText\([\s\S]*?\n\}\n/, "alterText"),
   schnipsel(/const BIAS_MODEL_ID[^\n]*\n/, "BIAS_MODEL_ID"),
-  schnipsel(/const ENSEMBLE_MODEL[\s\S]*?const NOWCAST_MODELS = \[[\s\S]*?\];/, "Nowcast-Konstanten"),
+  schnipsel(/const MATRIX_MODELLE[\s\S]*?const NOWCAST_MODELS = \[[\s\S]*?\];/, "Anzeige-Konstanten"),
   schnipsel(/function buildBias\(daten\)\{[\s\S]*?\n\}\n/, "buildBias"),
   schnipsel(/function buildNowcast\(raw\)\{[\s\S]*?\n\}\n/, "buildNowcast"),
-  schnipsel(/function ensembleFor\([\s\S]*?\n\}\n/, "ensembleFor"),
-  schnipsel(/function aemetFor\([\s\S]*?\n\}\n/, "aemetFor"),
-].join("\n") + "\nexport {buildBias, buildNowcast, ensembleFor, aemetFor, aggregate, realitaetsCheck, messAlterMin, istVeraltet, alterText};";
+].join("\n") + "\nexport {buildBias, buildNowcast, aggregate, realitaetsCheck, messAlterMin, istVeraltet, alterText};";
 
 const m = await import("data:text/javascript," + encodeURIComponent(code));
 
@@ -109,41 +107,6 @@ pruefe("HD leer -> Rueckfall auf 2,5 km", m.buildNowcast(nc([null, null], [7, 8]
 pruefe("beide leer -> null", m.buildNowcast(nc([null, null], [null, null])), null);
 pruefe("Luecken werden uebersprungen", m.buildNowcast(nc(null, [5, null]))?.schritte.length, 1);
 
-// --------------------------------------------------------------- ensembleFor
-console.log("\nensembleFor:");
-const zeiten = [], mitglieder = {};
-for (let h = 0; h < 24; h++) zeiten.push(`2026-09-11T${String(h).padStart(2, "0")}:00`);
-// Mitglied k erreicht im Fenster 10 + k*0.25 kn: 24 der 40 liegen bei >= 14.
-for (let k = 0; k < 40; k++)
-  mitglieder["wind_speed_10m_member" + k] = zeiten.map((_, h) => (h >= 15 && h <= 20) ? 10 + k * 0.25 : 3);
-const ens = {hourly: {time: zeiten, ...mitglieder}};
-pruefe("null", m.ensembleFor(null, "2026-09-11", 15, 20), null);
-pruefe("ohne hourly", m.ensembleFor({}, "2026-09-11", 15, 20), null);
-pruefe("Tag nicht enthalten", m.ensembleFor(ens, "2030-01-01", 15, 20), null);
-pruefe("40 Mitglieder erkannt", m.ensembleFor(ens, "2026-09-11", 15, 20).n, 40);
-pruefe("Chance = Anteil ueber der Schwelle", m.ensembleFor(ens, "2026-09-11", 15, 20).chance, 60);
-pruefe("zu wenige Mitglieder -> null", m.ensembleFor(
-  {hourly: {time: zeiten, "wind_speed_10m_a": zeiten.map(() => 9), "wind_speed_10m_b": zeiten.map(() => 9)}},
-  "2026-09-11", 15, 20), null);
-pruefe("alle Werte null -> null", m.ensembleFor({hourly: {time: zeiten,
-  ...Object.fromEntries(Array.from({length: 40}, (_, k) => ["wind_speed_10m_m" + k, zeiten.map(() => null)]))}},
-  "2026-09-11", 15, 20), null);
-
-// ------------------------------------------------------------------ aemetFor
-console.log("\naemetFor:");
-const A = {stunden: [
-  {zeit: "2026-09-11T15:00", kn: 5.4, grad: 135},
-  {zeit: "2026-09-11T17:00", kn: 11.9, grad: 135},
-  {zeit: "2026-09-11T22:00", kn: 20, grad: 0},   // ausserhalb des Fensters
-]};
-pruefe("null", m.aemetFor(null, "2026-09-11", 15, 20), null);
-pruefe("ohne stunden-Array", m.aemetFor({}, "2026-09-11", 15, 20), null);
-pruefe("stunden ist kein Array", m.aemetFor({stunden: "kaputt"}, "2026-09-11", 15, 20), null);
-pruefe("Tag ohne Treffer", m.aemetFor(A, "2026-09-13", 15, 20), null);
-pruefe("Spitze im Fenster, 22 Uhr bleibt draussen", m.aemetFor(A, "2026-09-11", 15, 20).peak, 11.9);
-pruefe("Spitzenstunde", m.aemetFor(A, "2026-09-11", 15, 20).stunde, 17);
-pruefe("Richtung als Grad, nicht als Kuerzel", m.aemetFor(A, "2026-09-11", 15, 20).grad, 135);
-
 // ------------------------------------------------------------------ aggregate
 // Der Fall vom 15.09.2026: Die korrigierte Spitze lag um 17 Uhr, der hoechste
 // Rohwert um 18 Uhr. Die Karte muss den Rohwert DER Stunde nennen, deren
@@ -167,7 +130,6 @@ function tagDaten(rohJeStunde, korrekturen) {
                     [`wind_gusts_10m_${HD_ID}`]: gu, [`wind_direction_10m_${HD_ID}`]: dr}},
     wave: {hourly: {time}},
     bias: m.buildBias({stunden}),
-    ensemble: null, aemet: null,
   };
 }
 const rund1 = x => x == null ? x : Math.round(x * 10) / 10;
@@ -211,7 +173,7 @@ function tagDrei(arome, ecmwf, icon) {
     reihen[`wind_direction_10m_${id}`] = reihe({}).map(() => 110);
   }
   return {wind: {hourly: {time, ...reihen}}, wave: {hourly: {time}},
-          bias: null, ensemble: null, aemet: null};
+          bias: null};
 }
 
 const mx = m.aggregate(tagDrei({17: 11.3, 18: 13.5}, {17: 8.7, 18: 8.9}, {17: 8.3, 18: 8.1}))[0];
