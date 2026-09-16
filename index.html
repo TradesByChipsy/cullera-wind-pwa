@@ -66,6 +66,7 @@
   .live-row .meta{font-family:'DM Mono',monospace;font-size:10.5px;color:#bcd9e6}
   .live-row.alt{opacity:.5}
   .live-row.alt .meta::after{content:" · veraltet"}
+  .live-check{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.14);font-family:'DM Mono',monospace;font-size:10.5px;line-height:1.5;color:#ff9d85}
   .live .q-auf{color:#7ee3b4;font-weight:600}
   .live .q-ab{color:#ff9d85;font-weight:600}
   .live .q-seit{color:#bcd9e6}
@@ -90,6 +91,7 @@
   .stat .sub b{color:var(--ink);font-weight:600}
   .stat .val small.at{font-size:12px;color:var(--mute);font-weight:400;letter-spacing:0}
   .stat .sub.bias{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--coral-deep);margin-top:4px;line-height:1.45}
+  .stat .sub.warnung{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--coral-deep);margin-top:4px;line-height:1.45}
   /* Wahrscheinlichkeit aus dem Ensemble – als Balken, weil "68 %" als Zahl
      allein nicht schneller lesbar ist als die Windspitze darüber. */
   .chance{margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
@@ -283,6 +285,22 @@ const BIAS_MODEL_ID   = "meteofrance_arome_france_hd"; // nur dieses Modell wurd
 // 39,0/-0,25 und damit 15,8 km südlich – für diesen Spot unbrauchbar.
 const ENSEMBLE_MODEL = "icon_eu";
 const WING_MIN = 14;   // kn – Schwelle aus dem früheren Dashboard: ab hier lohnt Wing-Foilen
+
+// Gegenprobe: ECMWF IFS und ICON-EU treffen am Marenyet bisher am besten – über
+// sechs Tage lag ihre Tagesspitze nie mehr als 3 kn zu hoch, AROME HD zweimal.
+// Liegen beide deutlich unter der angezeigten Zahl, ist das ein Warnzeichen.
+// Am 15.09.2026 war genau das der Fall: Karte 11,5 kn, ECMWF 8,9, ICON-EU 8,3 –
+// gemessen wurden 8,0 kn, ab 17 Uhr nur noch 4 bis 5. Die Streuungswarnung
+// (ab 6 kn Spanne) schlug nicht an, weil die Mehrheit der Modelle mit zu hoch lag.
+const PRUEF_MODELLE = ["ecmwf_ifs", "icon_eu"];
+const PRUEF_ABSTAND = 2;   // kn – ab hier gilt "deutlich darunter"
+
+// Realitätscheck im Messpanel: Was sagt das Modell für die laufende Stunde, was
+// misst die Station am Spot gerade? Klaffen beide auseinander, liegt das Modell
+// heute daneben – sichtbar, bevor man losfährt.
+// Der Name muss zu BIAS_STATION in scripts/messwerte.py passen.
+const REFERENZ_STATION = "Cullera Marenyet";
+const CHECK_ABSTAND = 3;   // kn Unterschied, ab dem der Hinweis erscheint
 
 // Nowcast: AROME in 15-Minuten-Schritten, stündlich neu gerechnet, 6 Stunden
 // voraus. Genau das Fenster zwischen "nachmittags entscheiden" und "am Strand
@@ -658,6 +676,14 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
     // Streuung über alle Modelle: wie einig sich die Quellen über die Spitze sind
     const peaks = perSource.map(s=>s.peak);
 
+    // Gegenprobe: Liegen BEIDE Prüfmodelle deutlich unter der Zahl, die oben steht,
+    // ist die Prognose mit Vorsicht zu lesen. Beide, nicht eines – sonst schlägt es
+    // bei jedem normalen Modellrauschen an.
+    const gegen = PRUEF_MODELLE.map(id => perSource.find(s => s.id === id)).filter(Boolean);
+    const gegenprobe = (peak != null && gegen.length === PRUEF_MODELLE.length
+        && gegen.every(s => peak - s.peak >= PRUEF_ABSTAND))
+      ? gegen.map(s => ({name: s.name.split(" ")[0], peak: s.peak})) : null;
+
     return {
       date: d,
       winStart: s0, winEnd: s1,
@@ -681,6 +707,7 @@ function aggregate({wind, wave, bias, ensemble, aemet}){
       spreadMin: peaks.length ? Math.min(...peaks) : null,
       spreadMax: peaks.length ? Math.max(...peaks) : null,
       perSource,
+      gegenprobe,
       ens:   ensembleFor(ensemble, d, s0, s1),
       aemet: aemetFor(aemet, d, s0, s1),
       waveH:    waveLead ? waveLead.h : null,
@@ -699,9 +726,26 @@ function dayLabel(dateStr, idx){
   return new Date(dateStr+"T12:00:00").toLocaleDateString("de-DE",{weekday:"long"});
 }
 
+// Realitätscheck: Modellwert der laufenden Stunde gegen die Messung am Spot.
+// Die Stunde kommt als Parameter herein, damit die Funktion testbar bleibt.
+function realitaetsCheck(live, heute, stunde){
+  if (!live || !Array.isArray(live.stationen) || !heute || !heute.hours) return null;
+  const eintrag = heute.hours.find(h => +h.t.slice(11,13) === stunde);
+  if (!eintrag || eintrag.wind == null) return null;
+  const st = live.stationen.find(s => s.name === REFERENZ_STATION) || live.stationen[0];
+  if (!st || st.veraltet || st.kn == null || !st.gemessen) return null;
+  // Die Messung muss zur selben Stunde gehören wie der Modellwert. Sonst
+  // vergliche eine stehengebliebene Datei – etwa weil der Actions-Job hängt –
+  // einen alten Messwert mit der Prognose der laufenden Stunde und warnte falsch.
+  if (+st.gemessen.slice(11,13) !== stunde) return null;
+  const diff = eintrag.wind - st.kn;
+  if (Math.abs(diff) < CHECK_ABSTAND) return null;
+  return {stunde, modell: eintrag.wind, gemessen: st.kn, station: st.name, diff};
+}
+
 // Gemessene Werte über den Prognosekarten. Bewusst getrennt dargestellt:
 // gemessen ist etwas anderes als gerechnet.
-function renderLive(live){
+function renderLive(live, check){
   if (!live || !Array.isArray(live.stationen) || !live.stationen.length) return "";
   const rows = live.stationen.map(s => {
     const q = windQuality(s.grad);
@@ -714,7 +758,11 @@ function renderLive(live){
   }).join("");
   return `<div class="live">`
     + `<div class="lab"><span>Jetzt gemessen</span><span class="src">${live.quelle || ""}</span></div>`
-    + rows + `</div>`;
+    + rows
+    + (check ? `<div class="live-check">Modell für ${String(check.stunde).padStart(2,"0")} Uhr: `
+        + `${Math.round(check.modell)} kn · gemessen ${check.gemessen} kn<br>`
+        + `${check.diff > 0 ? "das Modell liegt heute zu hoch" : "das Modell liegt heute zu niedrig"}</div>` : "")
+    + `</div>`;
 }
 
 // Nowcast-Leiste zwischen Messung und Prognose: was in den nächsten Stunden
@@ -754,7 +802,7 @@ function render(days, live, nowcast){
     : (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(1).replace(".", ",");
   const fmtDez = v => v==null ? "–" : v.toFixed(1).replace(".", ",");
 
-  let html = renderLive(live) + renderNowcast(nowcast) + '<div class="cards">';
+  let html = renderLive(live, realitaetsCheck(live, days[0], new Date().getHours())) + renderNowcast(nowcast) + '<div class="cards">';
   days.forEach((d, idx) => {
     const dateStr = new Date(d.date+"T12:00:00")
       .toLocaleDateString("de-DE",{day:"2-digit",month:"long"});
@@ -811,6 +859,7 @@ function render(days, live, nowcast){
           ${d.biasDelta != null ? `<div class="sub bias">korrigiert ${fmtSigned(d.biasDelta)} kn · Modell roh ${fmtDez(d.peakRaw)} kn<br>aus ${d.biasPeakN} Messungen um ${String(d.peakHour).padStart(2,"0")} Uhr · ${d.biasGeeicht}/${d.biasStunden} Fensterstunden geeicht</div>` : ""}
           <div class="sub spread${spreadWarn ? " spread-warn" : ""}">Modelle ${d.biasGeeicht ? "roh " : ""}${fmt0(d.spreadMin)}–${fmt0(d.spreadMax)} kn${
             spreadWarn ? " · unsicher" : ""}</div>
+            ${d.gegenprobe ? `<div class="sub warnung">Gegenprobe: ${d.gegenprobe.map(s => `${s.name} ${fmt0(s.peak)}`).join(" · ")} kn<br>beide deutlich niedriger – Zahl oben mit Vorsicht</div>` : ""}
         </div>
         <div class="stat">
           <div class="lab">Welle Ø</div>

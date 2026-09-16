@@ -37,13 +37,14 @@ const code = [
   schnipsel(/function seriesFor\([\s\S]*?\n\}\n/, "seriesFor"),
   schnipsel(/function windowIdx\([\s\S]*?\n\}\n/, "windowIdx"),
   schnipsel(/function aggregate\([\s\S]*?\n\}\n/, "aggregate"),
+  schnipsel(/function realitaetsCheck\([\s\S]*?\n\}\n/, "realitaetsCheck"),
   schnipsel(/const BIAS_MODEL_ID[^\n]*\n/, "BIAS_MODEL_ID"),
   schnipsel(/const ENSEMBLE_MODEL[\s\S]*?const NOWCAST_MODELS = \[[\s\S]*?\];/, "Nowcast-Konstanten"),
   schnipsel(/function buildBias\(daten\)\{[\s\S]*?\n\}\n/, "buildBias"),
   schnipsel(/function buildNowcast\(raw\)\{[\s\S]*?\n\}\n/, "buildNowcast"),
   schnipsel(/function ensembleFor\([\s\S]*?\n\}\n/, "ensembleFor"),
   schnipsel(/function aemetFor\([\s\S]*?\n\}\n/, "aemetFor"),
-].join("\n") + "\nexport {buildBias, buildNowcast, ensembleFor, aemetFor, aggregate};";
+].join("\n") + "\nexport {buildBias, buildNowcast, ensembleFor, aemetFor, aggregate, realitaetsCheck};";
 
 const m = await import("data:text/javascript," + encodeURIComponent(code));
 
@@ -187,6 +188,53 @@ pruefe("... und der Rohwert ist der der Spitzenstunde", k2.peakRaw, 13.6);
 const k3 = m.aggregate(tagDaten(heuteRoh, {}))[0];
 pruefe("ohne Korrektur: Spitze = hoechster Rohwert", k3.windPeak, 13.6);
 pruefe("ohne Korrektur: kein peakRaw", k3.peakRaw, null);
+
+
+// --------------------------------------------- Gegenprobe & Realitaetscheck
+// Am 15.09.2026 zeigte die Karte 11,5 kn, ECMWF sagte 8,9 und ICON-EU 8,3 –
+// gemessen wurden ab 17 Uhr nur 4 bis 5 kn. Beide Pruefmodelle lagen also klar
+// darunter, ohne dass die Streuungswarnung (ab 6 kn Spanne) angeschlagen haette.
+console.log();
+console.log("Gegenprobe der Pruefmodelle:");
+function tagDrei(arome, ecmwf, icon) {
+  const time = [];
+  for (let st = 0; st < 24; st++) time.push(`2026-09-15T${String(st).padStart(2, "0")}:00`);
+  const reihe = v => Array.from({length: 24}, (_, st) => v[st] ?? 3);
+  const reihen = {};
+  for (const [id, v] of [["meteofrance_arome_france_hd", arome],
+                         ["ecmwf_ifs", ecmwf], ["icon_eu", icon]]) {
+    reihen[`wind_speed_10m_${id}`] = reihe(v);
+    reihen[`wind_gusts_10m_${id}`] = reihe(v).map(x => x + 5);
+    reihen[`wind_direction_10m_${id}`] = reihe({}).map(() => 110);
+  }
+  return {wind: {hourly: {time, ...reihen}}, wave: {hourly: {time}},
+          bias: null, ensemble: null, aemet: null};
+}
+
+const g1 = m.aggregate(tagDrei({17: 11.3, 18: 13.5}, {17: 8.7, 18: 8.9}, {17: 8.3, 18: 8.1}))[0];
+pruefe("beide Pruefmodelle klar darunter -> Gegenprobe", g1.gegenprobe !== null, true);
+pruefe("... nennt den ECMWF-Wert", g1.gegenprobe?.[0].peak, 8.9);
+pruefe("... nennt den ICON-EU-Wert", g1.gegenprobe?.[1].peak, 8.3);
+const g2 = m.aggregate(tagDrei({17: 11.3}, {17: 10.0}, {17: 8.3}))[0];
+pruefe("nur eines darunter -> keine Gegenprobe", g2.gegenprobe, null);
+const g3 = m.aggregate(tagDrei({17: 8.0}, {17: 9.6}, {17: 11.3}))[0];
+pruefe("Pruefmodelle darueber -> keine Gegenprobe", g3.gegenprobe, null);
+
+console.log();
+console.log("Realitaetscheck im Messpanel:");
+const heuteKarte = m.aggregate(tagDrei({17: 11.0}, {17: 10.5}, {17: 10.6}))[0];
+const messung = (kn, veraltet = false, zeit = "2026-09-15T17:05+02:00") =>
+  ({stationen: [{name: "Cullera Marenyet", kn, veraltet, gemessen: zeit}]});
+pruefe("Modell 11, gemessen 5 -> Hinweis", m.realitaetsCheck(messung(5), heuteKarte, 17)?.gemessen, 5);
+pruefe("... und zwar: Modell zu hoch", m.realitaetsCheck(messung(5), heuteKarte, 17)?.diff > 0, true);
+pruefe("kleiner Unterschied -> kein Hinweis", m.realitaetsCheck(messung(9), heuteKarte, 17), null);
+pruefe("veraltete Messung -> kein Hinweis", m.realitaetsCheck(messung(5, true), heuteKarte, 17), null);
+pruefe("Stunde ohne Prognose -> kein Hinweis", m.realitaetsCheck(messung(5), heuteKarte, 3), null);
+pruefe("keine Messung -> kein Hinweis", m.realitaetsCheck(null, heuteKarte, 17), null);
+pruefe("Messung aus anderer Stunde -> kein Hinweis",
+  m.realitaetsCheck(messung(5, false, "2026-09-15T15:29+02:00"), heuteKarte, 17), null);
+pruefe("Messung ohne Zeitstempel -> kein Hinweis",
+  m.realitaetsCheck({stationen: [{name: "Cullera Marenyet", kn: 5}]}, heuteKarte, 17), null);
 
 
 console.log(fehler ? `\n${fehler} Test(s) fehlgeschlagen` : "\nAlle Tests bestanden");
