@@ -130,17 +130,20 @@
     align-items:baseline;gap:10px;margin-bottom:2px}
   .tage .tipp{letter-spacing:.04em;text-transform:none;font-size:9px}
   details.tagz{border-top:1px solid var(--line)}
-  details.tagz summary{display:flex;align-items:baseline;gap:8px;padding:10px 2px;
-    cursor:pointer;list-style:none}
+  /* Zwei Zeilen mit Absicht: Auf 375 px bleiben der Detailzeile neben Name,
+     Datum und Spitze nur gut 100 px, sie brach also ohnehin um - nur unsauber,
+     mitten in "NO seitlich". So steht sie geschlossen unter der Kopfzeile. */
+  details.tagz summary{display:block;padding:7px 2px;cursor:pointer;list-style:none}
+  .tg-kopf{display:flex;align-items:baseline;gap:8px}
   details.tagz summary::-webkit-details-marker{display:none}
   details.tagz summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:6px}
-  .tg-nm{font-family:'Fraunces',serif;font-size:16px;font-weight:600;min-width:68px}
+  .tg-nm{font-family:'Fraunces',serif;font-size:15px;font-weight:600}
   .tg-dt{font-family:'DM Mono',monospace;font-size:10px;color:var(--mute);min-width:42px}
-  .tg-pk{font-family:'DM Mono',monospace;font-size:17px;font-weight:500;min-width:48px;
-    text-align:right;font-variant-numeric:tabular-nums}
+  .tg-pk{font-family:'DM Mono',monospace;font-size:17px;font-weight:500;
+    margin-left:auto;font-variant-numeric:tabular-nums}
   .tg-pk small{font-size:10px;color:var(--mute);font-weight:400}
-  .tg-rest{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--mute);
-    margin-left:auto;text-align:right}
+  .tg-rest{display:block;font-family:'DM Mono',monospace;font-size:10.5px;
+    color:var(--mute);margin-top:1px}
   .tg-pf{color:#b9a98a;font-size:16px;margin-left:6px;transition:transform .18s ease}
   details.tagz[open] .tg-pf{transform:rotate(90deg)}
   @media (prefers-reduced-motion:reduce){.tg-pf{transition:none}}
@@ -937,14 +940,16 @@ function renderTage(days){
       // und Zahl und liest sich stockend.
       .toLocaleDateString("de-DE",{weekday:"short",day:"2-digit"}).replace(",", "");
     return `<details class="tagz"><summary>`
+      + `<span class="tg-kopf">`
       + `<span class="tg-nm">${dayLabel(d.date, i + 1)}</span>`
       + `<span class="tg-dt">${datum}</span>`
       + `<span class="tg-pk">${fmt0(d.windPeak)}<small> kn</small></span>`
+      + `<span class="tg-pf">&#8250;</span>`
+      + `</span>`
       + `<span class="tg-rest">`
       + (d.peakHour != null ? `${String(d.peakHour).padStart(2,"0")} Uhr · ` : "")
       + `${dirArrow(d.windDir)} ${dirName(d.windDir)} `
       + `<span class="${q.cls}">${q.label}</span> · ${fmt1(d.waveH)} m</span>`
-      + `<span class="tg-pf">&#8250;</span>`
       + `</summary><div class="tg-auf">${renderMatrix(d)}</div></details>`;
   }).join("");
   return `<div class="card tage">`
