@@ -64,9 +64,8 @@
   .live-row .kn{font-family:'DM Mono',monospace;font-size:17px;font-weight:500}
   .live-row .kn small{font-size:11px;color:#bcd9e6;font-weight:400}
   .live-row .meta{font-family:'DM Mono',monospace;font-size:10.5px;color:#bcd9e6}
-  .live-row.alt{opacity:.5}
-  .live-row.alt .meta::after{content:" · veraltet"}
-  .live-check{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.14);font-family:'DM Mono',monospace;font-size:10.5px;line-height:1.5;color:#ff9d85}
+  .live-row.alt{opacity:.55}
+  .live-check,.live-warn{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.14);font-family:'DM Mono',monospace;font-size:10.5px;line-height:1.5;color:#ff9d85}
   .live .q-auf{color:#7ee3b4;font-weight:600}
   .live .q-ab{color:#ff9d85;font-weight:600}
   .live .q-seit{color:#bcd9e6}
@@ -301,6 +300,13 @@ const PRUEF_ABSTAND = 2;   // kn – ab hier gilt "deutlich darunter"
 // Der Name muss zu BIAS_STATION in scripts/messwerte.py passen.
 const REFERENZ_STATION = "Cullera Marenyet";
 const CHECK_ABSTAND = 3;   // kn Unterschied, ab dem der Hinweis erscheint
+// Ab hier gilt eine Messung als veraltet – dieselbe Schwelle wie STALE_MINUTES
+// in scripts/messwerte.py. Das Alter rechnet die App beim Anzeigen selbst aus,
+// statt dem Flag aus der Datei zu glauben: Das Flag wird beim Schreiben gesetzt
+// und altert nicht mit. Als der Actions-Job am 16.09.2026 ab 23:41 Uhr stillstand,
+// zeigte die App deshalb neun Stunden alte Werte unbeschriftet als "jetzt
+// gemessen" an – darunter 13 kn am Faro.
+const MESSUNG_STALE_MIN = 45;
 
 // Nowcast: AROME in 15-Minuten-Schritten, stündlich neu gerechnet, 6 Stunden
 // voraus. Genau das Fenster zwischen "nachmittags entscheiden" und "am Strand
@@ -726,17 +732,49 @@ function dayLabel(dateStr, idx){
   return new Date(dateStr+"T12:00:00").toLocaleDateString("de-DE",{weekday:"long"});
 }
 
+// Alter einer Messung in Minuten, null wenn der Zeitstempel fehlt oder unlesbar
+// ist. Er trägt die Zone ("…+02:00"), Date parst ihn direkt.
+function messAlterMin(gemessen, jetzt){
+  if (!gemessen) return null;
+  const t = new Date(gemessen).getTime();
+  if (!Number.isFinite(t)) return null;
+  return (jetzt - t) / 60000;
+}
+
+// Veraltet ist eine Messung, wenn die Datei es sagt ODER der Zeitstempel zu alt
+// ist. Ohne lesbaren Zeitstempel gilt sie ebenfalls als veraltet – lieber
+// ausgegraut als falsch aktuell.
+function istVeraltet(s, jetzt){
+  if (!s) return true;
+  if (s.veraltet) return true;
+  const alt = messAlterMin(s.gemessen, jetzt);
+  return alt == null || alt > MESSUNG_STALE_MIN;
+}
+
+// Macht aus dem vagen "veraltet" ein konkretes Alter: "vor 12 Min", "vor 9 Std".
+function alterText(min){
+  if (min == null) return "Alter unbekannt";
+  if (min < 90) return `vor ${Math.round(min)} Min`;
+  // Abgerundet, nicht gerundet: Sonst standen zwei Messungen, die eine Minute
+  // auseinanderliegen, als "vor 10 Std" und "vor 9 Std" untereinander.
+  if (min < 36 * 60) return `vor ${Math.floor(min / 60)} Std`;
+  return `vor ${Math.floor(min / 1440)} Tagen`;
+}
+
 // Realitätscheck: Modellwert der laufenden Stunde gegen die Messung am Spot.
 // Die Stunde kommt als Parameter herein, damit die Funktion testbar bleibt.
-function realitaetsCheck(live, heute, stunde){
+function realitaetsCheck(live, heute, stunde, jetzt = Date.now()){
   if (!live || !Array.isArray(live.stationen) || !heute || !heute.hours) return null;
   const eintrag = heute.hours.find(h => +h.t.slice(11,13) === stunde);
   if (!eintrag || eintrag.wind == null) return null;
   const st = live.stationen.find(s => s.name === REFERENZ_STATION) || live.stationen[0];
-  if (!st || st.veraltet || st.kn == null || !st.gemessen) return null;
+  if (!st || istVeraltet(st, jetzt) || st.kn == null) return null;
   // Die Messung muss zur selben Stunde gehören wie der Modellwert. Sonst
   // vergliche eine stehengebliebene Datei – etwa weil der Actions-Job hängt –
   // einen alten Messwert mit der Prognose der laufenden Stunde und warnte falsch.
+  // Die Altersprüfung oben schließt zusätzlich den Fall aus, dass eine Messung
+  // von gestern zufällig dieselbe Stundenzahl trägt – die Stunde allein genügt
+  // dafür nicht, sie kennt das Datum nicht.
   if (+st.gemessen.slice(11,13) !== stunde) return null;
   const diff = eintrag.wind - st.kn;
   if (Math.abs(diff) < CHECK_ABSTAND) return null;
@@ -745,20 +783,32 @@ function realitaetsCheck(live, heute, stunde){
 
 // Gemessene Werte über den Prognosekarten. Bewusst getrennt dargestellt:
 // gemessen ist etwas anderes als gerechnet.
-function renderLive(live, check){
+function renderLive(live, check, jetzt = Date.now()){
   if (!live || !Array.isArray(live.stationen) || !live.stationen.length) return "";
+  let frisch = 0;
   const rows = live.stationen.map(s => {
     const q = windQuality(s.grad);
     const zeit = (s.gemessen || "").slice(11,16);
-    return `<div class="live-row${s.veraltet ? " alt" : ""}">`
+    const alt = istVeraltet(s, jetzt);
+    if (!alt) frisch++;
+    // Bei alten Zeilen steht das Alter direkt daneben – "23:34" allein liest sich
+    // am Morgen wie ein aktueller Wert.
+    const marke = alt ? ` · ${alterText(messAlterMin(s.gemessen, jetzt))}` : "";
+    return `<div class="live-row${alt ? " alt" : ""}">`
       + `<span class="st">${s.name}</span>`
       + `<span class="meta">${dirArrow(s.grad)} ${s.richtung || "?"} `
-      + `<span class="${q.cls}">${q.label}</span> · ${zeit}</span>`
+      + `<span class="${q.cls}">${q.label}</span> · ${zeit}${marke}</span>`
       + `<span class="kn">${s.kn} <small>kn</small></span></div>`;
   }).join("");
+  const alterAlle = live.stationen.map(s => messAlterMin(s.gemessen, jetzt))
+                        .filter(a => a != null);
+  const juengste = alterAlle.length ? Math.min(...alterAlle) : null;
   return `<div class="live">`
-    + `<div class="lab"><span>Jetzt gemessen</span><span class="src">${live.quelle || ""}</span></div>`
+    + `<div class="lab"><span>${frisch ? "Jetzt gemessen" : "Zuletzt gemessen"}</span>`
+      + `<span class="src">${live.quelle || ""}</span></div>`
     + rows
+    + (frisch ? "" : `<div class="live-warn">Keine frische Messung – die jüngste ist `
+        + `${alterText(juengste)}. Die Zahlen oben sind nicht von jetzt.</div>`)
     + (check ? `<div class="live-check">Modell für ${String(check.stunde).padStart(2,"0")} Uhr: `
         + `${Math.round(check.modell)} kn · gemessen ${check.gemessen} kn<br>`
         + `${check.diff > 0 ? "das Modell liegt heute zu hoch" : "das Modell liegt heute zu niedrig"}</div>` : "")
@@ -802,7 +852,10 @@ function render(days, live, nowcast){
     : (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(1).replace(".", ",");
   const fmtDez = v => v==null ? "–" : v.toFixed(1).replace(".", ",");
 
-  let html = renderLive(live, realitaetsCheck(live, days[0], new Date().getHours())) + renderNowcast(nowcast) + '<div class="cards">';
+  // Ein Zeitpunkt für alle Altersprüfungen dieses Durchlaufs.
+  const jetzt = Date.now();
+  let html = renderLive(live, realitaetsCheck(live, days[0], new Date().getHours(), jetzt), jetzt)
+    + renderNowcast(nowcast) + '<div class="cards">';
   days.forEach((d, idx) => {
     const dateStr = new Date(d.date+"T12:00:00")
       .toLocaleDateString("de-DE",{day:"2-digit",month:"long"});

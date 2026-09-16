@@ -38,13 +38,16 @@ const code = [
   schnipsel(/function windowIdx\([\s\S]*?\n\}\n/, "windowIdx"),
   schnipsel(/function aggregate\([\s\S]*?\n\}\n/, "aggregate"),
   schnipsel(/function realitaetsCheck\([\s\S]*?\n\}\n/, "realitaetsCheck"),
+  schnipsel(/function messAlterMin\([\s\S]*?\n\}\n/, "messAlterMin"),
+  schnipsel(/function istVeraltet\([\s\S]*?\n\}\n/, "istVeraltet"),
+  schnipsel(/function alterText\([\s\S]*?\n\}\n/, "alterText"),
   schnipsel(/const BIAS_MODEL_ID[^\n]*\n/, "BIAS_MODEL_ID"),
   schnipsel(/const ENSEMBLE_MODEL[\s\S]*?const NOWCAST_MODELS = \[[\s\S]*?\];/, "Nowcast-Konstanten"),
   schnipsel(/function buildBias\(daten\)\{[\s\S]*?\n\}\n/, "buildBias"),
   schnipsel(/function buildNowcast\(raw\)\{[\s\S]*?\n\}\n/, "buildNowcast"),
   schnipsel(/function ensembleFor\([\s\S]*?\n\}\n/, "ensembleFor"),
   schnipsel(/function aemetFor\([\s\S]*?\n\}\n/, "aemetFor"),
-].join("\n") + "\nexport {buildBias, buildNowcast, ensembleFor, aemetFor, aggregate, realitaetsCheck};";
+].join("\n") + "\nexport {buildBias, buildNowcast, ensembleFor, aemetFor, aggregate, realitaetsCheck, messAlterMin, istVeraltet, alterText};";
 
 const m = await import("data:text/javascript," + encodeURIComponent(code));
 
@@ -223,18 +226,66 @@ pruefe("Pruefmodelle darueber -> keine Gegenprobe", g3.gegenprobe, null);
 console.log();
 console.log("Realitaetscheck im Messpanel:");
 const heuteKarte = m.aggregate(tagDrei({17: 11.0}, {17: 10.5}, {17: 10.6}))[0];
+// Die Uhr wird hereingereicht, sonst waeren die Messungen unten je nach
+// Testzeitpunkt zu alt und jeder Hinweis bliebe aus.
+const JETZT = new Date("2026-09-15T17:20+02:00").getTime();
 const messung = (kn, veraltet = false, zeit = "2026-09-15T17:05+02:00") =>
   ({stationen: [{name: "Cullera Marenyet", kn, veraltet, gemessen: zeit}]});
-pruefe("Modell 11, gemessen 5 -> Hinweis", m.realitaetsCheck(messung(5), heuteKarte, 17)?.gemessen, 5);
-pruefe("... und zwar: Modell zu hoch", m.realitaetsCheck(messung(5), heuteKarte, 17)?.diff > 0, true);
-pruefe("kleiner Unterschied -> kein Hinweis", m.realitaetsCheck(messung(9), heuteKarte, 17), null);
-pruefe("veraltete Messung -> kein Hinweis", m.realitaetsCheck(messung(5, true), heuteKarte, 17), null);
-pruefe("Stunde ohne Prognose -> kein Hinweis", m.realitaetsCheck(messung(5), heuteKarte, 3), null);
-pruefe("keine Messung -> kein Hinweis", m.realitaetsCheck(null, heuteKarte, 17), null);
+pruefe("Modell 11, gemessen 5 -> Hinweis", m.realitaetsCheck(messung(5), heuteKarte, 17, JETZT)?.gemessen, 5);
+pruefe("... und zwar: Modell zu hoch", m.realitaetsCheck(messung(5), heuteKarte, 17, JETZT)?.diff > 0, true);
+pruefe("kleiner Unterschied -> kein Hinweis", m.realitaetsCheck(messung(9), heuteKarte, 17, JETZT), null);
+pruefe("veraltete Messung -> kein Hinweis", m.realitaetsCheck(messung(5, true), heuteKarte, 17, JETZT), null);
+pruefe("Stunde ohne Prognose -> kein Hinweis", m.realitaetsCheck(messung(5), heuteKarte, 3, JETZT), null);
+pruefe("keine Messung -> kein Hinweis", m.realitaetsCheck(null, heuteKarte, 17, JETZT), null);
 pruefe("Messung aus anderer Stunde -> kein Hinweis",
-  m.realitaetsCheck(messung(5, false, "2026-09-15T15:29+02:00"), heuteKarte, 17), null);
+  m.realitaetsCheck(messung(5, false, "2026-09-15T15:29+02:00"), heuteKarte, 17, JETZT), null);
 pruefe("Messung ohne Zeitstempel -> kein Hinweis",
-  m.realitaetsCheck({stationen: [{name: "Cullera Marenyet", kn: 5}]}, heuteKarte, 17), null);
+  m.realitaetsCheck({stationen: [{name: "Cullera Marenyet", kn: 5}]}, heuteKarte, 17, JETZT), null);
+
+
+console.log();
+console.log("Alter der Messung:");
+// Der Ausloeser: Am 16.09.2026 stand der Actions-Job seit 23:41 Uhr. Die Datei
+// trug weiter veraltet=false, weil das Flag beim Schreiben gesetzt wird und
+// nicht mitaltert – die App zeigte neun Stunden alte Werte als "jetzt gemessen".
+const MORGENS = new Date("2026-09-16T09:04+02:00").getTime();
+const gestern = {veraltet: false, gemessen: "2026-09-15T23:34+02:00"};
+pruefe("Flag sagt frisch, Zeitstempel 9 Std alt -> veraltet",
+  m.istVeraltet(gestern, MORGENS), true);
+pruefe("... und das Alter wird beziffert",
+  m.alterText(m.messAlterMin(gestern.gemessen, MORGENS)), "vor 9 Std");
+pruefe("frische Messung -> nicht veraltet",
+  m.istVeraltet({veraltet: false, gemessen: "2026-09-15T17:05+02:00"}, JETZT), false);
+pruefe("Flag sagt veraltet -> veraltet, auch bei frischem Stempel",
+  m.istVeraltet({veraltet: true, gemessen: "2026-09-15T17:05+02:00"}, JETZT), true);
+pruefe("kein Zeitstempel -> veraltet", m.istVeraltet({veraltet: false}, JETZT), true);
+pruefe("unlesbarer Zeitstempel -> veraltet",
+  m.istVeraltet({veraltet: false, gemessen: "keine Zeit"}, JETZT), true);
+pruefe("keine Station -> veraltet", m.istVeraltet(null, JETZT), true);
+// Genau auf der Schwelle gilt die Messung noch.
+const vorMin = min => ({veraltet: false,
+  gemessen: new Date(JETZT - min * 60000).toISOString()});
+pruefe("45 Min alt -> gilt noch", m.istVeraltet(vorMin(45), JETZT), false);
+pruefe("46 Min alt -> veraltet", m.istVeraltet(vorMin(46), JETZT), true);
+pruefe("Alter in Minuten", Math.round(m.messAlterMin("2026-09-15T17:05+02:00", JETZT)), 15);
+pruefe("fehlender Stempel -> kein Alter", m.messAlterMin(null, JETZT), null);
+pruefe("Text: Minuten", m.alterText(12), "vor 12 Min");
+pruefe("Text: Stunden", m.alterText(200), "vor 3 Std");
+pruefe("Text: Tage", m.alterText(2880), "vor 2 Tagen");
+// Zwei Messungen eine Minute auseinander muessen dasselbe Alter zeigen.
+pruefe("569 Min", m.alterText(569), "vor 9 Std");
+pruefe("570 Min, gleiches Alter", m.alterText(570), "vor 9 Std");
+
+// Die Stundenzahl allein kennt das Datum nicht: Eine Messung von gestern 09:34
+// kaeme heute um 9 Uhr durch die alte Pruefung. Erst das Alter faengt sie ab.
+const karte9 = m.aggregate(tagDrei({9: 12.0}, {9: 11.5}, {9: 11.6}))[0];
+const st9 = z => ({stationen: [{name: "Cullera Marenyet", kn: 5,
+                                veraltet: false, gemessen: z}]});
+pruefe("gleiche Stunde, aber von gestern -> kein Hinweis",
+  m.realitaetsCheck(st9("2026-09-15T09:34+02:00"), karte9, 9, MORGENS), null);
+pruefe("gleiche Stunde und frisch -> Hinweis",
+  m.realitaetsCheck(st9("2026-09-16T09:34+02:00"), karte9, 9,
+    new Date("2026-09-16T09:44+02:00").getTime())?.gemessen, 5);
 
 
 console.log(fehler ? `\n${fehler} Test(s) fehlgeschlagen` : "\nAlle Tests bestanden");

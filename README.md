@@ -175,7 +175,18 @@ alle 15 Min (05–19 UTC)
 
 Fällt eine Station aus, wird sie übersprungen; fallen alle aus, bleibt die alte
 `observations.json` stehen. Messwerte älter als 45 Minuten werden in der App
-ausgegraut und als „veraltet" markiert.
+ausgegraut und mit ihrem Alter beschriftet („· vor 9 Std").
+
+Das Alter rechnet die App selbst aus dem Zeitstempel, statt dem Feld `veraltet`
+aus der Datei zu glauben. Der Grund: Das Feld wird beim Schreiben gesetzt und
+altert nicht mit. Steht der Job still, bleibt die Datei mit `veraltet: false`
+liegen und die App zeigte beliebig alte Werte als aktuell an – am 16.09.2026
+neun Stunden alte, darunter 13 kn am Faro, unter der Überschrift „Jetzt
+gemessen". Ist keine Messung mehr frisch, heißt die Überschrift jetzt „Zuletzt
+gemessen" und darunter steht eine Zeile, wie alt die jüngste ist. Auch der
+Realitätscheck hängt an dieser Prüfung: Ohne sie verglich eine Messung von
+gestern 09:34 heute um 9 Uhr mit der laufenden Prognose, weil die Stundenzahl
+allein das Datum nicht kennt.
 
 ### Warum der Job eine Schleife dreht
 
