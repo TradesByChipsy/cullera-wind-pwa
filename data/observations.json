@@ -1,13 +1,13 @@
 {
- "stand": "2026-09-20T21:16+02:00",
+ "stand": "2026-09-20T21:21+02:00",
  "quelle": "AVAMET (CC BY-NC-ND 4.0)",
  "stationen": [
   {
    "name": "Cullera Marenyet",
-   "kn": 0,
+   "kn": 1,
    "grad": 219,
    "richtung": "SW",
-   "gemessen": "2026-09-20T21:09+02:00",
+   "gemessen": "2026-09-20T21:14+02:00",
    "veraltet": false
   },
   {
@@ -15,7 +15,7 @@
    "kn": 0,
    "grad": 114,
    "richtung": "OSO",
-   "gemessen": "2026-09-20T21:00+02:00",
+   "gemessen": "2026-09-20T21:10+02:00",
    "veraltet": false
   },
   {
@@ -23,7 +23,7 @@
    "kn": 0,
    "grad": 171,
    "richtung": "S",
-   "gemessen": "2026-09-20T21:10+02:00",
+   "gemessen": "2026-09-20T21:15+02:00",
    "veraltet": false
   }
  ]
