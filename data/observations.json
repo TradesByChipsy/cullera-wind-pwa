@@ -1,5 +1,5 @@
 {
- "stand": "2026-10-01T20:27+02:00",
+ "stand": "2026-10-01T20:42+02:00",
  "quelle": "AVAMET (CC BY-NC-ND 4.0)",
  "stationen": [
   {
@@ -8,22 +8,22 @@
    "grad": 23,
    "richtung": "NNO",
    "gemessen": "2026-10-01T19:45+02:00",
-   "veraltet": false
+   "veraltet": true
   },
   {
    "name": "Cullera Faro",
-   "kn": 16,
-   "grad": 75,
-   "richtung": "ONO",
-   "gemessen": "2026-10-01T20:10+02:00",
+   "kn": 12,
+   "grad": 79,
+   "richtung": "O",
+   "gemessen": "2026-10-01T20:30+02:00",
    "veraltet": false
   },
   {
    "name": "Cullera San Antonio",
-   "kn": 3,
-   "grad": 111,
-   "richtung": "OSO",
-   "gemessen": "2026-10-01T20:20+02:00",
+   "kn": 4,
+   "grad": 95,
+   "richtung": "O",
+   "gemessen": "2026-10-01T20:35+02:00",
    "veraltet": false
   }
  ]
