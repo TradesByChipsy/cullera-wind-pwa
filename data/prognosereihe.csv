@@ -1980,3 +1980,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-10-03T18:00,ukmo_global_deterministic_10km,7.8,12.8,44
 2026-10-03T18:00,meteofrance_arpege_europe,4.7,10.9,55
 2026-10-03T18:00,gfs_seamless,8.0,9.5,37
+2026-10-03T19:00,meteofrance_arome_france_hd,5.2,11.3,20
+2026-10-03T19:00,meteofrance_arome_france,4.5,10.5,25
+2026-10-03T19:00,ecmwf_ifs,5.0,10.9,40
+2026-10-03T19:00,icon_eu,3.5,7.8,27
+2026-10-03T19:00,ukmo_global_deterministic_10km,7.8,12.2,37
+2026-10-03T19:00,meteofrance_arpege_europe,3.5,8.2,56
+2026-10-03T19:00,gfs_seamless,7.1,8.9,37
