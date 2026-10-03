@@ -1959,3 +1959,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-10-03T15:00,ukmo_global_deterministic_10km,5.8,11.3,13
 2026-10-03T15:00,meteofrance_arpege_europe,6.0,11.7,57
 2026-10-03T15:00,gfs_seamless,8.0,7.8,45
+2026-10-03T16:00,meteofrance_arome_france_hd,8.1,15.0,21
+2026-10-03T16:00,meteofrance_arome_france,7.1,14.4,21
+2026-10-03T16:00,ecmwf_ifs,6.5,13.4,9
+2026-10-03T16:00,icon_eu,5.6,10.1,20
+2026-10-03T16:00,ukmo_global_deterministic_10km,6.4,11.7,33
+2026-10-03T16:00,meteofrance_arpege_europe,6.1,11.7,50
+2026-10-03T16:00,gfs_seamless,9.1,9.1,47
