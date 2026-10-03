@@ -1994,3 +1994,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-10-03T20:00,ukmo_global_deterministic_10km,8.2,12.4,32
 2026-10-03T20:00,meteofrance_arpege_europe,3.1,5.4,35
 2026-10-03T20:00,gfs_seamless,7.0,11.1,27
+2026-10-03T21:00,meteofrance_arome_france_hd,4.4,9.7,52
+2026-10-03T21:00,meteofrance_arome_france,2.8,9.3,51
+2026-10-03T21:00,ecmwf_ifs,3.0,8.4,11
+2026-10-03T21:00,icon_eu,2.2,4.5,322
+2026-10-03T21:00,ukmo_global_deterministic_10km,7.6,11.7,27
+2026-10-03T21:00,meteofrance_arpege_europe,2.9,4.5,37
+2026-10-03T21:00,gfs_seamless,6.6,11.3,28
