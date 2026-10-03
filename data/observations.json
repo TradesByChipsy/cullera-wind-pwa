@@ -1,29 +1,29 @@
 {
- "stand": "2026-10-03T12:12+02:00",
+ "stand": "2026-10-03T12:27+02:00",
  "quelle": "AVAMET (CC BY-NC-ND 4.0)",
  "stationen": [
   {
    "name": "Cullera Marenyet",
-   "kn": 4,
-   "grad": 323,
+   "kn": 3,
+   "grad": 308,
    "richtung": "NW",
-   "gemessen": "2026-10-03T12:03+02:00",
+   "gemessen": "2026-10-03T12:18+02:00",
    "veraltet": false
   },
   {
    "name": "Cullera Faro",
-   "kn": 4,
-   "grad": 288,
+   "kn": 7,
+   "grad": 294,
    "richtung": "WNW",
-   "gemessen": "2026-10-03T12:00+02:00",
+   "gemessen": "2026-10-03T12:10+02:00",
    "veraltet": false
   },
   {
    "name": "Cullera San Antonio",
-   "kn": 3,
-   "grad": 45,
-   "richtung": "NO",
-   "gemessen": "2026-10-03T12:00+02:00",
+   "kn": 2,
+   "grad": 342,
+   "richtung": "NNW",
+   "gemessen": "2026-10-03T12:16+02:00",
    "veraltet": false
   }
  ]
