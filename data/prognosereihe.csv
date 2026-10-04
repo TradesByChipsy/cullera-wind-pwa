@@ -2015,3 +2015,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-10-03T23:00,ukmo_global_deterministic_10km,4.1,6.0,23
 2026-10-03T23:00,meteofrance_arpege_europe,4.2,7.2,53
 2026-10-03T23:00,gfs_seamless,5.7,9.5,31
+2026-10-04T12:00,meteofrance_arome_france_hd,4.1,7.8,289
+2026-10-04T12:00,meteofrance_arome_france,4.1,7.4,289
+2026-10-04T12:00,ecmwf_ifs,4.1,9.1,342
+2026-10-04T12:00,icon_eu,3.1,6.2,356
+2026-10-04T12:00,ukmo_global_deterministic_10km,4.5,7.8,313
+2026-10-04T12:00,meteofrance_arpege_europe,4.1,8.2,275
+2026-10-04T12:00,gfs_seamless,3.7,2.7,18
