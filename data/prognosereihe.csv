@@ -3240,3 +3240,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-10-20T11:00,ukmo_global_deterministic_10km,12.1,18.5,259
 2026-10-20T11:00,meteofrance_arpege_europe,10.8,16.9,253
 2026-10-20T11:00,gfs_seamless,10.4,17.3,253
+2026-10-20T12:00,meteofrance_arome_france_hd,10.7,17.7,267
+2026-10-20T12:00,meteofrance_arome_france,10.5,17.9,267
+2026-10-20T12:00,ecmwf_ifs,9.4,18.3,265
+2026-10-20T12:00,icon_eu,11.1,18.9,264
+2026-10-20T12:00,ukmo_global_deterministic_10km,12.6,20.4,269
+2026-10-20T12:00,meteofrance_arpege_europe,11.5,18.7,259
+2026-10-20T12:00,gfs_seamless,13.2,19.8,271
