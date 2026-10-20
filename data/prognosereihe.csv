@@ -3317,3 +3317,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-10-20T22:00,ukmo_global_deterministic_10km,6.4,9.3,304
 2026-10-20T22:00,meteofrance_arpege_europe,9.8,13.8,256
 2026-10-20T22:00,gfs_seamless,10.9,22.4,260
+2026-10-20T23:00,meteofrance_arome_france_hd,8.0,11.7,269
+2026-10-20T23:00,meteofrance_arome_france,7.6,11.9,270
+2026-10-20T23:00,ecmwf_ifs,6.3,15.6,259
+2026-10-20T23:00,icon_eu,6.8,14.2,273
+2026-10-20T23:00,ukmo_global_deterministic_10km,6.4,9.3,283
+2026-10-20T23:00,meteofrance_arpege_europe,9.8,13.8,252
+2026-10-20T23:00,gfs_seamless,9.0,19.0,251
