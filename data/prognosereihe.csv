@@ -3814,3 +3814,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-10-27T12:00,ukmo_global_deterministic_10km,2.5,5.1,156
 2026-10-27T12:00,meteofrance_arpege_europe,4.4,8.6,225
 2026-10-27T12:00,gfs_seamless,1.2,5.2,231
+2026-10-27T13:00,meteofrance_arome_france_hd,5.7,9.1,145
+2026-10-27T13:00,meteofrance_arome_france,4.6,8.0,140
+2026-10-27T13:00,ecmwf_ifs,2.3,7.0,123
+2026-10-27T13:00,icon_eu,2.9,6.4,118
+2026-10-27T13:00,ukmo_global_deterministic_10km,4.5,8.0,158
+2026-10-27T13:00,meteofrance_arpege_europe,3.1,8.0,184
+2026-10-27T13:00,gfs_seamless,1.1,4.9,149
