@@ -4227,3 +4227,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-11-01T15:00,ukmo_global_deterministic_10km,6.2,10.7,195
 2026-11-01T15:00,meteofrance_arpege_europe,4.7,10.7,235
 2026-11-01T15:00,gfs_seamless,4.2,7.4,214
+2026-11-01T16:00,meteofrance_arome_france_hd,6.1,9.3,153
+2026-11-01T16:00,meteofrance_arome_france,5.7,8.9,152
+2026-11-01T16:00,ecmwf_ifs,3.6,7.6,131
+2026-11-01T16:00,icon_eu,2.7,6.8,150
+2026-11-01T16:00,ukmo_global_deterministic_10km,8.9,14.2,167
+2026-11-01T16:00,meteofrance_arpege_europe,4.3,8.9,210
+2026-11-01T16:00,gfs_seamless,4.3,7.6,190
