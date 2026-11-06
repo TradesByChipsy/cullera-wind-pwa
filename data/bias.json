@@ -3,6 +3,10 @@
  "modell": "meteofrance_arome_france_hd",
  "min_pro_stunde": 8,
  "stunden": {
+  "0": {
+   "kn": -2.3,
+   "n": 8
+  },
   "11": {
    "kn": 0.0,
    "n": 76
