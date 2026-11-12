@@ -4913,3 +4913,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-11-12T17:00,ukmo_global_deterministic_10km,14.4,22.0,257
 2026-11-12T17:00,meteofrance_arpege_europe,13.6,24.7,261
 2026-11-12T17:00,gfs_seamless,21.7,33.8,263
+2026-11-12T18:00,meteofrance_arome_france_hd,9.0,25.9,266
+2026-11-12T18:00,meteofrance_arome_france,8.2,27.0,271
+2026-11-12T18:00,ecmwf_ifs,12.8,24.7,252
+2026-11-12T18:00,icon_eu,9.5,21.0,266
+2026-11-12T18:00,ukmo_global_deterministic_10km,13.0,19.6,253
+2026-11-12T18:00,meteofrance_arpege_europe,13.5,21.4,258
+2026-11-12T18:00,gfs_seamless,19.7,31.9,261
