@@ -5221,3 +5221,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-11-17T19:00,ukmo_global_deterministic_10km,10.5,16.1,260
 2026-11-17T19:00,meteofrance_arpege_europe,13.6,22.0,272
 2026-11-17T19:00,gfs_seamless,17.1,30.3,262
+2026-11-17T20:00,meteofrance_arome_france_hd,13.4,22.9,266
+2026-11-17T20:00,meteofrance_arome_france,12.6,21.8,267
+2026-11-17T20:00,ecmwf_ifs,6.9,19.2,257
+2026-11-17T20:00,icon_eu,12.7,22.4,264
+2026-11-17T20:00,ukmo_global_deterministic_10km,9.5,14.2,264
+2026-11-17T20:00,meteofrance_arpege_europe,12.6,22.0,271
+2026-11-17T20:00,gfs_seamless,14.8,26.0,271
