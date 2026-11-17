@@ -5207,3 +5207,10 @@ zeit,modell,wind_kn,boe_kn,grad
 2026-11-17T17:00,ukmo_global_deterministic_10km,7.6,11.7,267
 2026-11-17T17:00,meteofrance_arpege_europe,14.4,23.5,268
 2026-11-17T17:00,gfs_seamless,17.0,27.0,265
+2026-11-17T18:00,meteofrance_arome_france_hd,9.2,19.0,288
+2026-11-17T18:00,meteofrance_arome_france,9.7,20.0,286
+2026-11-17T18:00,ecmwf_ifs,11.2,21.4,259
+2026-11-17T18:00,icon_eu,12.1,20.8,264
+2026-11-17T18:00,ukmo_global_deterministic_10km,9.7,14.8,266
+2026-11-17T18:00,meteofrance_arpege_europe,13.3,22.7,276
+2026-11-17T18:00,gfs_seamless,16.8,27.6,264
