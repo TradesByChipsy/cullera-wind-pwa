@@ -1,5 +1,5 @@
 {
- "stand": "2026-11-20T18:06+01:00",
+ "stand": "2026-11-20T18:21+01:00",
  "quelle": "AVAMET (CC BY-NC-ND 4.0)",
  "stationen": [
   {
@@ -7,15 +7,15 @@
    "kn": 2,
    "grad": 242,
    "richtung": "WSW",
-   "gemessen": "2026-11-20T18:00+01:00",
+   "gemessen": "2026-11-20T18:15+01:00",
    "veraltet": false
   },
   {
    "name": "Cullera Faro",
-   "kn": 10,
-   "grad": 238,
+   "kn": 4,
+   "grad": 253,
    "richtung": "WSW",
-   "gemessen": "2026-11-20T18:00+01:00",
+   "gemessen": "2026-11-20T18:20+01:00",
    "veraltet": false
   },
   {
@@ -23,7 +23,7 @@
    "kn": 1,
    "grad": 192,
    "richtung": "SSW",
-   "gemessen": "2026-11-20T18:00+01:00",
+   "gemessen": "2026-11-20T18:15+01:00",
    "veraltet": false
   }
  ]
